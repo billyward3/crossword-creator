@@ -1,0 +1,223 @@
+ACE - top card
+ARC - curved line
+AWE - wonder
+BAT - nocturnal flyer
+CUP - drink from it
+DEN - cozy room
+ELF - Santa's helper
+FIG - small sweet fruit
+GEM - precious stone
+HOP - small jump
+ICE - frozen water
+INK - pen fluid
+JAM - fruit spread
+JOG - easy run
+NAP - short sleep
+NET - catches fish
+OAK - sturdy tree
+OWL - night bird
+PEA - tiny green veggie
+RUG - floor covering
+SKI - winter sport
+SPA - relaxation spot
+TAN - sun darkened
+VET - animal doctor
+WEB - spider's creation
+ZEN - peaceful state
+ARCH - curved structure
+BARK - tree covering
+BELL - rings loudly
+BONE - skeleton part
+CAPE - superhero wears one
+CAVE - underground chamber
+CLUE - puzzle hint
+COAL - burned for heat
+CONE - ice cream holder
+DART - thrown at a board
+DAWN - sunrise moment
+DEER - forest animal
+DOCK - boat parking
+DOME - rounded roof
+DRUM - beat on it
+ECHO - sound bounces back
+FERN - leafy plant
+FOAM - bubbly surface
+FORK - eating utensil
+GATE - fence opening
+GLOW - soft light
+GOLD - precious metal
+HARP - stringed instrument
+HAZE - foggy air
+HERB - cooking plant
+HIKE - trail walk
+HOOK - curved metal
+IRON - press clothes
+JADE - green stone
+KELP - ocean seaweed
+KITE - flies on a string
+LAVA - volcanic flow
+LEAF - falls in autumn
+LIME - green citrus
+LION - jungle king
+MARE - female horse
+MAZE - confusing paths
+MINT - fresh herb
+MOAT - castle water
+MOTH - night butterfly
+NEST - bird home
+OPAL - iridescent gem
+ORCA - killer whale
+PALM - tropical tree
+PEAK - mountain top
+PIER - ocean walkway
+PINE - evergreen tree
+PLUM - purple fruit
+POLE - long stick
+POND - small lake
+RAFT - floats on water
+REED - marsh grass
+REEF - coral structure
+ROBE - bath garment
+SAGE - wise person
+SAIL - catches the wind
+SEAL - ocean mammal
+SEED - plant starter
+SILK - smooth fabric
+SLED - rides on snow
+SOAP - hand cleaner
+STEM - flower stalk
+SURF - ride the waves
+SWAN - graceful bird
+TALE - bedtime story
+TIDE - ocean rise and fall
+TOAD - warty amphibian
+TOMB - burial chamber
+TREK - long journey
+TUNA - sushi fish
+TWIG - small branch
+VEIL - face covering
+VINE - climbing plant
+WADE - walk through water
+WAND - magic stick
+WICK - candle string
+WING - bird flies with it
+ACORN - oak tree seed
+AMBER - fossilized resin
+BLAZE - roaring fire
+BRINE - salty water
+CEDAR - aromatic wood
+CHARM - lucky trinket
+CLIFF - steep rock face
+CORAL - underwater reef builder
+CRANE - construction machine
+CRUST - bread's edge
+DRIFT - float aimlessly
+EMBER - dying fire glow
+FEAST - grand meal
+FLINT - sparks when struck
+FROST - winter morning coating
+GLEAM - faint shine
+GOURD - autumn decoration
+GRAPE - wine fruit
+HAVEN - safe place
+IVORY - elephant tusk material
+JEWEL - sparkling gem
+KAYAK - small paddle boat
+LATCH - door fastener
+LEDGE - narrow shelf
+MARSH - wetland area
+MIRTH - joyful laughter
+NOBLE - of high rank
+OCEAN - vast body of saltwater
+OLIVE - Mediterranean fruit
+ORBIT - path around a planet
+PEARL - oyster treasure
+PLAZA - town square
+PRISM - splits light into colors
+QUILL - feather pen
+RAVEN - black bird
+RIDGE - mountain spine
+SCARF - winter neckwear
+SIREN - warning sound
+SLATE - chalkboard material
+SOLAR - powered by the sun
+SPICE - flavors food
+SPINE - backbone
+STARE - look fixedly
+STEAM - boiling water vapor
+STONE - a small rock
+SWAMP - murky wetland
+THORN - rose's defense
+TIGER - striped big cat
+TORCH - carried flame
+TROUT - freshwater fish
+TULIP - spring flower
+VAULT - secure room
+WHEAT - grain for bread
+ANCHOR - holds a ship in place
+BASKET - woven container
+BREEZE - gentle wind
+BRIDGE - spans a river
+CANDLE - wax light source
+CASTLE - medieval fortress
+COMET - icy space traveler
+DESERT - arid landscape
+FALCON - fast hunting bird
+FOSSIL - ancient remains in rock
+GALAXY - billions of stars
+GARDEN - plant paradise
+GRAVEL - loose small stones
+HARBOR - sheltered port
+INSECT - six legged creature
+JACKET - outer layer
+JUNGLE - dense tropical forest
+KNIGHT - medieval warrior
+LAGOON - shallow coastal lake
+MARBLE - smooth round toy
+MEADOW - grassy field
+NECTAR - flower's sweet liquid
+OSPREY - fish hunting raptor
+PEBBLE - smooth small stone
+PIRATE - high seas outlaw
+QUARTZ - crystal mineral
+RIPPLE - water disturbance
+SADDLE - horse seat
+SIGNAL - communication sign
+SPIRIT - inner essence
+STREAM - small flowing river
+SUMMIT - highest point
+TALON - bird of prey claw
+TEMPLE - sacred building
+THATCH - straw roof
+TIMBER - building wood
+TUNNEL - underground passage
+VELVET - soft luxury fabric
+Viking - Norse explorer
+WALRUS - tusked arctic mammal
+ZENITH - peak of the sky
+ALMANAC - yearly reference book
+BALCONY - upper floor terrace
+CAPSULE - small container
+CHIMNEY - smoke exit
+COMPASS - points north
+CRIMSON - deep red color
+CYCLONE - spinning storm
+ECLIPSE - blocks the sun
+FEATHER - bird covering
+GLACIER - slow moving ice river
+GONDOLA - Venetian boat
+HABITAT - natural home
+HORIZON - where sky meets earth
+LANTERN - portable light
+LEAPFROG - jumping game
+MAMMOTH - extinct woolly giant
+ORIGAMI - Japanese paper folding
+PARASOL - sun umbrella
+PHOENIX - reborn from ashes
+PYRAMID - Egyptian monument
+RAMPART - fortress wall
+SANDBAR - shallow ocean ridge
+TAPESTRY - woven wall hanging
+TUNDRA - frozen treeless plain
+VOLCANO - erupting mountain
+WHISPER - speak very softly
