@@ -3,6 +3,7 @@ import { CELL_BLACK, CELL_EMPTY, cellToLetter } from "./types";
 import { cellIndex, cellPosition, inBounds, isBlack, extractSlots, symmetryPartner } from "./grid";
 import { WordIndex } from "./wordindex";
 import { initializeDomains, assignWord } from "./constraints";
+import { computeClueNumbers } from "@/lib/numbering";
 
 /**
  * A suggestion for the user to add a word to their wordlist.
@@ -45,6 +46,11 @@ export function analyzeSuggestions(
   const slotMap = new Map<number, SlotDescriptor>();
   for (const s of slots) slotMap.set(s.id, s);
 
+  // Compute clue numbers for human-readable messages
+  const clueNumbers = computeClueNumbers(grid.rows, grid.cols, (r, c) => {
+    return grid.cells[cellIndex(grid, r, c)] === CELL_BLACK;
+  });
+
   // Compute feasibility for each slot
   const state = initializeDomains(slots, wordIndex);
   const feasibility: SlotFeasibility[] = [];
@@ -84,6 +90,14 @@ export function analyzeSuggestions(
       return neighborFeas && neighborFeas.status !== "impossible";
     });
 
+    // Only use clue number if this slot's start cell actually begins a word
+    // in this slot's direction (a cell can be numbered for Down but not Across)
+    const clueNum = clueNumbers.get(`${slot.startRow},${slot.startCol}`);
+    const startsInDirection = slot.direction === "across"
+      ? (slot.startCol === 0 || isBlack(grid, slot.startRow, slot.startCol - 1))
+      : (slot.startRow === 0 || isBlack(grid, slot.startRow - 1, slot.startCol));
+    const validClueNum = clueNum !== undefined && startsInDirection ? clueNum : undefined;
+
     suggestions.push({
       slotId: slot.id,
       direction: slot.direction,
@@ -93,7 +107,7 @@ export function analyzeSuggestions(
       pattern,
       constraints,
       urgency: isBlocking ? "blocking" : "helpful",
-      message: buildSuggestionMessage(slot, pattern, constraints),
+      message: buildSuggestionMessage(slot, pattern, constraints, validClueNum),
     });
   }
 
@@ -131,20 +145,30 @@ function getSlotConstraints(
 function buildSuggestionMessage(
   slot: SlotDescriptor,
   pattern: string,
-  constraints: [number, string][]
+  constraints: [number, string][],
+  clueNumber?: number
 ): string {
   const dirLabel = slot.direction === "across" ? "Across" : "Down";
-  const position = `(${slot.startRow + 1}, ${slot.startCol + 1})`;
+
+  // Only use the clue number if it actually corresponds to this slot's direction.
+  // A cell can have a clue number for Down but not Across (or vice versa),
+  // so we verify the slot direction matches before using the number.
+  let label: string;
+  if (clueNumber) {
+    label = `${clueNumber} ${dirLabel}`;
+  } else {
+    label = `${dirLabel} (row ${slot.startRow + 1}, col ${slot.startCol + 1})`;
+  }
 
   if (constraints.length === 0) {
-    return `Need a ${slot.length}-letter word for ${dirLabel} at ${position}. Any ${slot.length}-letter word will work!`;
+    return `Need a ${slot.length}-letter word for ${label}. Any ${slot.length}-letter word will work!`;
   }
 
   const knownLetters = constraints
     .map(([pos, letter]) => `${letter} at position ${pos + 1}`)
     .join(", ");
 
-  return `Need a ${slot.length}-letter word matching "${pattern}" for ${dirLabel} at ${position} (${knownLetters}).`;
+  return `Need a ${slot.length}-letter word matching "${pattern}" for ${label} (${knownLetters}).`;
 }
 
 /**
