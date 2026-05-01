@@ -21,7 +21,7 @@ export default function Home() {
         <h1 className="text-5xl font-bold tracking-tight">
           Crossword Creator
         </h1>
-        <p className="mt-4 text-lg text-gray-600 max-w-xl">
+        <p className="mt-4 text-lg text-gray-700 max-w-xl">
           Create dense, professional-quality crossword puzzles with an
           intelligent generation engine. Share them with a link.
         </p>
@@ -29,7 +29,7 @@ export default function Home() {
 
       <div className="flex flex-col items-center gap-4">
         <CrosswordGrid grid={demoGrid} cellSize={48} />
-        <p className="text-sm text-gray-400">Sample 5x5 mini grid</p>
+        <p className="text-sm text-gray-700">Sample 5x5 mini grid</p>
       </div>
 
       <div className="flex gap-4">
