@@ -19,10 +19,9 @@ export function FreeformPreview({ result, cellSize = 36 }: FreeformPreviewProps)
     <div className="flex flex-col gap-4">
       <div className="flex flex-col items-center gap-2">
         <svg
-          width={gridWidth + 2}
-          height={gridHeight + 2}
           viewBox={`-1 -1 ${gridWidth + 2} ${gridHeight + 2}`}
-          className="select-none"
+          className="select-none w-full"
+          style={{ maxWidth: gridWidth + 2, maxHeight: gridHeight + 2 }}
         >
           <rect
             x={0} y={0}
@@ -78,24 +77,30 @@ export function FreeformPreview({ result, cellSize = 36 }: FreeformPreviewProps)
           )}
         </svg>
 
-        <div className="flex gap-4 text-xs text-gray-700">
-          <span>{placed.length} word{placed.length !== 1 ? "s" : ""} placed</span>
-          <span>{intersections} intersection{intersections !== 1 ? "s" : ""}</span>
-          <span>{rows}x{cols} grid</span>
+        <div className="flex gap-3 text-xs text-gray-700">
+          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+            {placed.length} word{placed.length !== 1 ? "s" : ""} placed
+          </span>
+          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+            {intersections} intersection{intersections !== 1 ? "s" : ""}
+          </span>
+          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+            {rows}&times;{cols} grid
+          </span>
         </div>
       </div>
 
       {unplaced.length > 0 && (
-        <div className="text-sm text-gray-700">
-          <p className="font-medium text-black mb-1">
-            Couldn't place {unplaced.length} word{unplaced.length !== 1 ? "s" : ""}:
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+          <p className="font-semibold text-black mb-1">
+            {unplaced.length} word{unplaced.length !== 1 ? "s" : ""} couldn't be placed
           </p>
-          <p className="text-gray-600">
+          <p className="text-gray-800 mb-1">
             {unplaced.map((w) => w.word).join(", ")}
           </p>
-          <p className="text-gray-600 mt-1">
-            These words don't share enough letters with the placed words to create intersections.
-            Try adding words with common letters.
+          <p className="text-gray-700 text-xs">
+            These words don't share enough letters with the placed words to create crossings.
+            Adding words with common letters (A, E, R, S, T) helps.
           </p>
         </div>
       )}
