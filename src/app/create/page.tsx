@@ -1,20 +1,16 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import type { WordEntry, SolverResult, GridModel, SlotFeasibility } from "@/engine/types";
-import type { WordNeededSuggestion } from "@/engine/suggestions";
+import type { WordEntry, SolverResult } from "@/engine/types";
 import { solveFreeformMultiple, type FreeformResult } from "@/engine/freeform";
-import { gridFromPattern, extractSlots } from "@/engine/grid";
+import { gridFromPattern } from "@/engine/grid";
 import { buildWordIndex } from "@/engine/wordindex";
 import { solve } from "@/engine/solver";
-import { analyzeSuggestions } from "@/engine/suggestions";
 import { getTemplatesForSize } from "@/engine/templates";
 import { WordlistInput } from "./components/WordlistInput";
 import { WordListSidebar } from "./components/WordListSidebar";
 import { FreeformPreview } from "./components/FreeformPreview";
 import { CrosswordGrid } from "@/components/CrosswordGrid";
-import { GapVisualization } from "./components/GapVisualization";
-import { SuggestionPanel } from "./components/SuggestionPanel";
 
 type CreatorStep = "input" | "generating" | "results";
 type GridMode = "freeform" | "5x5" | "15x15" | "21x21";
@@ -30,10 +26,8 @@ const STORAGE_KEY_WORDS = "crossword-creator-words";
 
 interface TemplateResult {
   solutions: SolverResult[];
-  suggestions: WordNeededSuggestion[];
-  feasibility: SlotFeasibility[];
-  grid: GridModel | null;
-  shortage: { length: number; needed: number; have: number }[] | null;
+  /** Freeform fallback when CSP solver can't fill the grid */
+  freeformFallback: FreeformResult[] | null;
 }
 
 export default function CreatePage() {
@@ -68,16 +62,19 @@ export default function CreatePage() {
   const runTemplate = useCallback((rows: number, cols: number) => {
     const templates = getTemplatesForSize(rows, cols);
     if (templates.length === 0) {
-      setTemplateResult({ solutions: [], suggestions: [], feasibility: [], grid: null, shortage: null });
+      setTemplateResult({ solutions: [], freeformFallback: null });
       return;
     }
 
     const wordIndex = buildWordIndex(words);
     const allSolutions: SolverResult[] = [];
 
+    // More attempts for smaller grids (they solve fast), fewer for large ones
+    const seedCount = rows <= 5 ? 30 : rows <= 15 ? 12 : 6;
+
     for (const template of templates) {
       const grid = gridFromPattern(template.pattern);
-      for (let seed = 0; seed < 4; seed++) {
+      for (let seed = 0; seed < seedCount; seed++) {
         const results = solve(grid, wordIndex, {
           maxSolutions: 1,
           seed: seed * 1000 + Date.now(),
@@ -94,36 +91,16 @@ export default function CreatePage() {
     }
 
     if (allSolutions.length > 0) {
-      setTemplateResult({ solutions: allSolutions, suggestions: [], feasibility: [], grid: null, shortage: null });
+      setTemplateResult({ solutions: allSolutions, freeformFallback: null });
       setSelectedTemplate(0);
       return;
     }
 
-    // No solutions — analyze the first template
-    const grid = gridFromPattern(templates[0].pattern);
-    const analysis = analyzeSuggestions(grid, wordIndex);
-    const slots = extractSlots(grid);
-
-    // Compute shortage
-    const slotsPerLength = new Map<number, number>();
-    for (const s of slots) slotsPerLength.set(s.length, (slotsPerLength.get(s.length) || 0) + 1);
-    const wordsPerLength = new Map<number, number>();
-    for (const w of words) {
-      const len = w.word.length;
-      wordsPerLength.set(len, (wordsPerLength.get(len) || 0) + 1);
-    }
-    const shortage: { length: number; needed: number; have: number }[] = [];
-    for (const [len, needed] of slotsPerLength) {
-      const have = wordsPerLength.get(len) || 0;
-      if (have < needed) shortage.push({ length: len, needed, have });
-    }
-
+    // CSP solver couldn't fill the grid — use freeform as fallback
+    const freeformFallback = solveFreeformMultiple(words, 4, 12);
     setTemplateResult({
       solutions: [],
-      suggestions: analysis.suggestions,
-      feasibility: analysis.feasibility,
-      grid,
-      shortage: shortage.length > 0 ? shortage : null,
+      freeformFallback: freeformFallback.length > 0 ? freeformFallback : null,
     });
     setSelectedTemplate(null);
   }, [words]);
@@ -292,9 +269,6 @@ export default function CreatePage() {
                   result={templateResult}
                   selectedIndex={selectedTemplate}
                   onSelect={setSelectedTemplate}
-                  words={words}
-                  onAddWord={handleAddWord}
-                  onRemoveWord={handleRemoveWord}
                   modeName={GRID_MODES.find((m) => m.mode === gridMode)!.label}
                 />
               )}
@@ -390,19 +364,15 @@ function TemplateView({
   result,
   selectedIndex,
   onSelect,
-  words,
-  onAddWord,
-  onRemoveWord,
   modeName,
 }: {
   result: TemplateResult | null;
   selectedIndex: number | null;
   onSelect: (i: number) => void;
-  words: WordEntry[];
-  onAddWord: (entry: WordEntry) => void;
-  onRemoveWord: (word: string) => void;
   modeName: string;
 }) {
+  const [fallbackSelected, setFallbackSelected] = useState<number>(0);
+
   if (!result) {
     return (
       <div className="flex items-center gap-3 py-8">
@@ -412,12 +382,12 @@ function TemplateView({
     );
   }
 
-  // Solutions found
+  // CSP solutions found — perfect fills
   if (result.solutions.length > 0) {
     return (
       <>
         <p className="text-sm text-gray-800">
-          Found {result.solutions.length} solution{result.solutions.length !== 1 ? "s" : ""} for {modeName}.
+          Found {result.solutions.length} perfect {modeName} fill{result.solutions.length !== 1 ? "s" : ""}.
         </p>
 
         {result.solutions.length > 1 && (
@@ -450,60 +420,46 @@ function TemplateView({
     );
   }
 
-  // No solutions — show analysis
+  // CSP solver failed — show freeform fallback
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-gray-800">
-        Couldn't fill a {modeName} grid with your current words.
-      </p>
+      <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+        <p className="text-black font-semibold mb-1">
+          A strict {modeName} grid requires very specific letter overlaps.
+        </p>
+        <p className="text-gray-800">
+          Your words don't have enough compatible crossings to fill a standard {modeName} template.
+          Here's the best freeform layout instead. Adding more words with common letters (A, E, R, S, T) improves results.
+        </p>
+      </div>
 
-      {/* Shortage info */}
-      {result.shortage && result.shortage.length > 0 && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-          <p className="text-black font-semibold mb-2">You need more words for {modeName}:</p>
-          <ul className="flex flex-col gap-1">
-            {result.shortage.map(({ length, needed, have }) => (
-              <li key={length} className="text-gray-800">
-                <strong>{length}-letter words:</strong> you have {have}, need at least {needed}
-                {" "}&mdash; add {needed - have} more
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {!result.shortage && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-          <p className="text-black font-semibold mb-1">Almost there!</p>
-          <p className="text-gray-800">
-            You have enough words of each length, but the solver couldn't find an
-            arrangement where all crossing letters match. Try adding more words to
-            give the solver more options.
-          </p>
-        </div>
-      )}
-
-      {/* Gap visualization */}
-      {result.grid && result.feasibility.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-gray-800">
-            Green slots can be filled. Red slots need words you haven't added yet.
-          </p>
-          <GapVisualization
-            grid={result.grid}
-            feasibility={result.feasibility}
-            cellSize={result.grid.cols <= 5 ? 44 : 24}
+      {result.freeformFallback && result.freeformFallback.length > 0 && (
+        <>
+          {result.freeformFallback.length > 1 && (
+            <div className="flex gap-2 flex-wrap">
+              {result.freeformFallback.map((r, i) => (
+                <button
+                  key={i}
+                  onClick={() => setFallbackSelected(i)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                    fallbackSelected === i
+                      ? "bg-gray-800 text-white shadow-sm"
+                      : "bg-gray-50 text-black hover:bg-gray-100 border border-gray-200"
+                  }`}
+                >
+                  Layout {i + 1}
+                  <span className={`ml-2 text-xs ${fallbackSelected === i ? "text-gray-400" : "text-gray-600"}`}>
+                    {r.placed.length} words
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <FreeformPreview
+            result={result.freeformFallback[fallbackSelected]}
+            cellSize={result.freeformFallback[fallbackSelected].cols <= 10 ? 40 : 28}
           />
-        </div>
-      )}
-
-      {/* Slot-specific suggestions */}
-      {result.suggestions.length > 0 && (
-        <SuggestionPanel
-          suggestions={result.suggestions}
-          onAddWord={onAddWord}
-          onRemoveWord={onRemoveWord}
-        />
+        </>
       )}
     </div>
   );
