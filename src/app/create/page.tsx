@@ -1,113 +1,161 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import type { WordEntry, SolverResult } from "@/engine/types";
-import { solveFreeformMultiple, type FreeformResult } from "@/engine/freeform";
-import { gridFromPattern } from "@/engine/grid";
-import { buildWordIndex } from "@/engine/wordindex";
-import { solve } from "@/engine/solver";
-import { getTemplatesForSize } from "@/engine/templates";
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { WordEntry } from "@/engine/types";
+import {
+  solveFreeformMultiple,
+  type FreeformResult,
+  type FreeformStrategy,
+  FREEFORM_STRATEGIES,
+} from "@/engine/freeform";
+import { STRATEGY_DETAILS } from "@/lib/strategy-info";
+import {
+  loadDictionary,
+  dictionaryToWordEntries,
+} from "@/engine/dictionary";
+import { useRouter } from "next/navigation";
 import { WordlistInput } from "./components/WordlistInput";
 import { WordListSidebar } from "./components/WordListSidebar";
 import { FreeformPreview } from "./components/FreeformPreview";
-import { CrosswordGrid } from "@/components/CrosswordGrid";
 
 type CreatorStep = "input" | "generating" | "results";
-type GridMode = "freeform" | "5x5" | "15x15" | "21x21";
-
-const GRID_MODES: { mode: GridMode; label: string; rows: number; cols: number }[] = [
-  { mode: "freeform", label: "Freeform", rows: 0, cols: 0 },
-  { mode: "5x5", label: "5\u00d75", rows: 5, cols: 5 },
-  { mode: "15x15", label: "15\u00d715", rows: 15, cols: 15 },
-  { mode: "21x21", label: "21\u00d721", rows: 21, cols: 21 },
-];
 
 const STORAGE_KEY_WORDS = "crossword-creator-words";
+const STORAGE_KEY_STRATEGY = "crossword-creator-strategy";
+const STORAGE_KEY_MAX_WORDS = "crossword-creator-max-words";
+const STORAGE_KEY_EDITOR = "crossword-editor-state";
 
-interface TemplateResult {
-  solutions: SolverResult[];
-  /** Freeform fallback when CSP solver can't fill the grid */
-  freeformFallback: FreeformResult[] | null;
-}
+const GRID_SIZE_PROMPTS: { label: string; size: string }[] = [
+  { label: "5×5", size: "5x5" },
+  { label: "15×15", size: "15x15" },
+  { label: "21×21", size: "21x21" },
+];
 
 export default function CreatePage() {
   const [words, setWords] = useState<WordEntry[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<CreatorStep>("input");
-  const [gridMode, setGridMode] = useState<GridMode>("freeform");
+  const [strategy, setStrategy] = useState<FreeformStrategy>("graph-guided");
   const [freeformResults, setFreeformResults] = useState<FreeformResult[]>([]);
   const [selectedFreeform, setSelectedFreeform] = useState<number | null>(null);
-  const [templateResult, setTemplateResult] = useState<TemplateResult | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null);
+  const [maxWords, setMaxWords] = useState<number | null>(null); // null = no limit
+  const [dictionaryWords, setDictionaryWords] = useState<WordEntry[]>([]);
+  const [dictionaryLoading, setDictionaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     try {
       const storedWords = localStorage.getItem(STORAGE_KEY_WORDS);
       if (storedWords) setWords(JSON.parse(storedWords));
+
+      // URL query param can override the default strategy (e.g. from strategy pages)
+      const params = new URLSearchParams(window.location.search);
+      const queryStrategy = params.get("strategy");
+      if (queryStrategy && queryStrategy in STRATEGY_DETAILS) {
+        setStrategy(queryStrategy as FreeformStrategy);
+      }
+
+      const storedMax = localStorage.getItem(STORAGE_KEY_MAX_WORDS);
+      if (storedMax) {
+        const parsed = JSON.parse(storedMax);
+        setMaxWords(parsed === null ? null : Number(parsed));
+      }
     } catch {}
     setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (hydrated) localStorage.setItem(STORAGE_KEY_MAX_WORDS, JSON.stringify(maxWords));
+  }, [maxWords, hydrated]);
+
+  useEffect(() => {
     if (hydrated) localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(words));
   }, [words, hydrated]);
 
-  const runFreeform = useCallback(() => {
-    const results = solveFreeformMultiple(words, 6, 20);
-    setFreeformResults(results);
-    setSelectedFreeform(results.length > 0 ? 0 : null);
-  }, [words]);
+  // Strategy is not persisted. It always defaults to graph-guided unless
+  // overridden by a ?strategy= query param.
 
-  const runTemplate = useCallback((rows: number, cols: number) => {
-    const templates = getTemplatesForSize(rows, cols);
-    if (templates.length === 0) {
-      setTemplateResult({ solutions: [], freeformFallback: null });
+  // Eagerly load the dictionary on mount. It's used by the adjacency-aware
+  // strategy to validate perpendicular completions; loading it up front
+  // ensures the first generation has access to it without a race.
+  useEffect(() => {
+    if (dictionaryWords.length > 0 || dictionaryLoading) return;
+    setDictionaryLoading(true);
+    loadDictionary()
+      .then((dict) => {
+        setDictionaryWords(dictionaryToWordEntries(dict));
+        setDictionaryLoading(false);
+      })
+      .catch(() => setDictionaryLoading(false));
+    // Only fire once on mount; the guard above prevents duplicate loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dictionaryReady = dictionaryWords.length > 0;
+  const adjacencyNeedsDict =
+    strategy.startsWith("adjacency") && !dictionaryReady;
+
+  // Words actually used by the solver: enabled-only, capped to maxWords
+  const eligibleWords = words.filter((w) => w.enabled !== false);
+  // Regenerate using freshly-passed inputs (no closure on parent state),
+  // so callers like the slider can pass the just-committed cap directly.
+  // The cap is passed to the solver as `maxPlaced`. The solver still sees the
+  // full word list and chooses the best subset of `cap` words, instead of us
+  // pre-slicing and locking it into a fixed prefix.
+  const runFreeformWith = useCallback(
+    (s: FreeformStrategy, cap: number | null) => {
+      const enabled = words.filter((w) => w.enabled !== false);
+      const maxPlaced = cap !== null && cap < enabled.length ? cap : undefined;
+      // Adjacency-aware verifies every perpendicular run against a real word
+      // set. We pass the dictionary as `extraValidWords` so that placements
+      // can form dictionary words perpendicular to user words.
+      const extraValid =
+        s.startsWith("adjacency") ? dictionaryWords : undefined;
+      const results = solveFreeformMultiple(
+        enabled,
+        6,
+        20,
+        s,
+        maxPlaced,
+        extraValid,
+      );
+      setFreeformResults(results);
+      setSelectedFreeform(results.length > 0 ? 0 : null);
+    },
+    [words, dictionaryWords]
+  );
+
+  const runFreeform = useCallback(
+    (s: FreeformStrategy) => runFreeformWith(s, maxWords),
+    [runFreeformWith, maxWords]
+  );
+
+  // Track whether we've already re-run because the dictionary finished loading,
+  // so we don't trigger an infinite loop.
+  const hasRerunForDictRef = useRef(false);
+
+  // If the dictionary finishes loading while results are already on screen
+  // and adjacency-aware is the active strategy, re-run once with the dictionary.
+  useEffect(() => {
+    if (!dictionaryReady) {
+      hasRerunForDictRef.current = false;
       return;
     }
-
-    const wordIndex = buildWordIndex(words);
-    const allSolutions: SolverResult[] = [];
-
-    // More attempts for smaller grids (they solve fast), fewer for large ones
-    const seedCount = rows <= 5 ? 30 : rows <= 15 ? 12 : 6;
-
-    for (const template of templates) {
-      const grid = gridFromPattern(template.pattern);
-      for (let seed = 0; seed < seedCount; seed++) {
-        const results = solve(grid, wordIndex, {
-          maxSolutions: 1,
-          seed: seed * 1000 + Date.now(),
-        });
-        for (const result of results) {
-          const isDuplicate = allSolutions.some((ex) =>
-            ex.grid.cells.every((v, i) => v === result.grid.cells[i])
-          );
-          if (!isDuplicate) allSolutions.push(result);
-        }
-        if (allSolutions.length >= 6) break;
-      }
-      if (allSolutions.length >= 6) break;
+    if (
+      strategy.startsWith("adjacency") &&
+      step === "results" &&
+      !hasRerunForDictRef.current
+    ) {
+      hasRerunForDictRef.current = true;
+      runFreeform(strategy);
     }
-
-    if (allSolutions.length > 0) {
-      setTemplateResult({ solutions: allSolutions, freeformFallback: null });
-      setSelectedTemplate(0);
-      return;
-    }
-
-    // CSP solver couldn't fill the grid — use freeform as fallback
-    const freeformFallback = solveFreeformMultiple(words, 4, 12);
-    setTemplateResult({
-      solutions: [],
-      freeformFallback: freeformFallback.length > 0 ? freeformFallback : null,
-    });
-    setSelectedTemplate(null);
-  }, [words]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strategy, step, dictionaryReady]);
 
   const handleGenerate = useCallback(() => {
-    if (words.length < 2) {
-      setError("Add at least 2 words to generate a puzzle");
+    if (eligibleWords.length < 2) {
+      setError("Enable at least 2 words to generate a puzzle");
       return;
     }
 
@@ -115,32 +163,27 @@ export default function CreatePage() {
     setStep("generating");
     setFreeformResults([]);
     setSelectedFreeform(null);
-    setTemplateResult(null);
-    setSelectedTemplate(null);
-    setGridMode("freeform");
 
     setTimeout(() => {
       try {
-        runFreeform();
+        runFreeform(strategy);
         setStep("results");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Generation failed");
         setStep("input");
       }
     }, 50);
-  }, [words, runFreeform]);
+  }, [eligibleWords.length, strategy, runFreeform]);
 
-  const handleModeChange = useCallback((mode: GridMode) => {
-    setGridMode(mode);
-    if (mode === "freeform") {
-      if (freeformResults.length === 0) runFreeform();
-    } else {
-      const cfg = GRID_MODES.find((m) => m.mode === mode)!;
-      setTemplateResult(null);
-      setSelectedTemplate(null);
-      setTimeout(() => runTemplate(cfg.rows, cfg.cols), 10);
-    }
-  }, [freeformResults, runFreeform, runTemplate]);
+  const handleStrategyChange = useCallback(
+    (newStrategy: FreeformStrategy) => {
+      setStrategy(newStrategy);
+      if (step === "results") {
+        runFreeform(newStrategy);
+      }
+    },
+    [step, runFreeform]
+  );
 
   const handleAddWord = useCallback(
     (entry: WordEntry) => {
@@ -160,7 +203,7 @@ export default function CreatePage() {
 
   const handleUpdateClue = useCallback(
     (word: string, clue: string) => {
-      setWords(words.map((w) => w.word === word ? { ...w, clue } : w));
+      setWords(words.map((w) => (w.word === word ? { ...w, clue } : w)));
     },
     [words]
   );
@@ -169,21 +212,52 @@ export default function CreatePage() {
     setStep("input");
     setFreeformResults([]);
     setSelectedFreeform(null);
-    setTemplateResult(null);
-    setSelectedTemplate(null);
   }, []);
 
+  const handleContinueToEditor = useCallback(() => {
+    if (selectedFreeform === null || !freeformResults[selectedFreeform]) return;
+    const result = freeformResults[selectedFreeform];
+
+    // Convert FreeformResult.grid ("#" = empty) to editor grid ("" = empty, "#" = black)
+    const editorGrid = result.grid.map((row) =>
+      row.map((cell) => (cell === "#" ? "" : cell))
+    );
+
+    const userWordList = words
+      .filter((w) => w.enabled !== false)
+      .map((w) => w.word.toUpperCase());
+    const fillWordList = result.placed
+      .filter((p) => p.isFill)
+      .map((p) => p.word.toUpperCase());
+
+    // Build clue map keyed by "row,col,direction"
+    const clues: Record<string, string> = {};
+    for (const p of result.placed) {
+      clues[`${p.row},${p.col},${p.direction}`] = p.clue || "";
+    }
+
+    const editorState = {
+      grid: editorGrid,
+      clues,
+      userWords: userWordList,
+      fillWords: fillWordList,
+    };
+
+    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    router.push("/create/edit");
+  }, [selectedFreeform, freeformResults, words, router]);
+
   return (
-    <main className="min-h-screen bg-white text-black">
-      <header className="bg-white border-b px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <a href="/" className="text-xl font-bold text-black">
+    <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
+      <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between pr-12">
+          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
           </a>
           {step !== "input" && (
             <button
               onClick={handleBack}
-              className="text-sm text-gray-700 hover:text-black"
+              className="text-sm text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
             >
               &larr; Back to editor
             </button>
@@ -201,8 +275,8 @@ export default function CreatePage() {
         {step === "input" && (
           <div className="flex flex-col gap-8 max-w-3xl">
             <div>
-              <h1 className="text-3xl font-bold text-black mb-2">Create a Crossword</h1>
-              <p className="text-gray-800">
+              <h1 className="text-3xl font-bold text-black dark:text-zinc-100 mb-2">Create a Crossword</h1>
+              <p className="text-gray-800 dark:text-zinc-300">
                 Add your words and clues, then generate your puzzle. The engine
                 will arrange them into the densest crossword it can.
               </p>
@@ -210,13 +284,26 @@ export default function CreatePage() {
 
             <WordlistInput words={words} onWordsChange={setWords} />
 
-            <button
-              onClick={handleGenerate}
-              disabled={words.length < 2}
-              className="self-start px-8 py-3 bg-black text-white rounded-xl font-medium hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              Generate Puzzle
-            </button>
+            <div className="flex gap-4 flex-wrap items-center">
+              <button
+                onClick={handleGenerate}
+                disabled={eligibleWords.length < 2 || adjacencyNeedsDict}
+                className="px-8 py-3 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl font-medium hover:bg-gray-800 dark:hover:bg-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Generate Puzzle
+              </button>
+              {adjacencyNeedsDict && (
+                <span className="text-sm text-gray-700 dark:text-zinc-400">
+                  Loading dictionary for Adjacency-Aware…
+                </span>
+              )}
+              <a
+                href="/create/guided"
+                className="px-8 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl font-medium text-black dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors"
+              >
+                Guided Builder
+              </a>
+            </div>
           </div>
         )}
 
@@ -229,51 +316,74 @@ export default function CreatePage() {
 
         {step === "results" && (
           <div className="flex flex-col lg:flex-row gap-8">
-            <div className="flex-1 min-w-0 flex flex-col gap-8">
+            <div className="flex-1 min-w-0 flex flex-col gap-6">
               <div>
-                <h1 className="text-3xl font-bold text-black mb-2">Your Puzzle</h1>
-                <p className="text-gray-800">
-                  Choose a layout mode and pick the arrangement you like best.
+                <h1 className="text-3xl font-bold text-black dark:text-zinc-100 mb-2">Your Puzzle</h1>
+                <p className="text-gray-800 dark:text-zinc-300">
+                  Pick a strategy and choose the layout you like best.
                 </p>
               </div>
 
-              {/* Grid mode selector */}
-              <div className="flex gap-2 flex-wrap">
-                {GRID_MODES.map(({ mode, label }) => (
-                  <button
-                    key={mode}
-                    onClick={() => handleModeChange(mode)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      gridMode === mode
-                        ? "bg-black text-white shadow-md"
-                        : "bg-gray-100 text-black hover:bg-gray-200 border border-gray-200"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              {/* Strategy selector buttons */}
+              <StrategySelector
+                strategy={strategy}
+                onChange={handleStrategyChange}
+              />
+
+              {/* Max-words slider */}
+              <MaxWordsSlider
+                eligibleCount={eligibleWords.length}
+                value={maxWords}
+                onChange={(v) => {
+                  setMaxWords(v);
+                  // Re-run with the just-committed cap (don't rely on stale runFreeform)
+                  runFreeformWith(strategy, v);
+                }}
+              />
+
+              {/* Want a fixed grid size? Suggest guided builder */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl flex flex-col gap-2">
+                <p className="text-sm font-semibold text-black dark:text-zinc-100">
+                  Want a fixed grid size?
+                </p>
+                <p className="text-sm text-gray-800 dark:text-zinc-300">
+                  Freeform builds the grid around your words. For a standard {" "}
+                  {GRID_SIZE_PROMPTS.map((g, i) => (
+                    <span key={g.size}>
+                      {i > 0 && (i === GRID_SIZE_PROMPTS.length - 1 ? ", or " : ", ")}
+                      <span className="font-mono">{g.label}</span>
+                    </span>
+                  ))}{" "}
+                  grid, the guided builder lets you place words on a fixed grid
+                  pattern with dictionary-powered fill suggestions.
+                </p>
+                <a
+                  href="/create/guided"
+                  className="self-start mt-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors"
+                >
+                  Open Guided Builder &rarr;
+                </a>
               </div>
 
-              {/* Freeform mode */}
-              {gridMode === "freeform" && (
-                <FreeformView
-                  results={freeformResults}
-                  selectedIndex={selectedFreeform}
-                  onSelect={setSelectedFreeform}
-                />
+              <FreeformView
+                results={freeformResults}
+                selectedIndex={selectedFreeform}
+                onSelect={setSelectedFreeform}
+                hideUnplaced={maxWords !== null && maxWords < eligibleWords.length}
+              />
+
+              {selectedFreeform !== null && freeformResults[selectedFreeform] && (
+                <button
+                  onClick={handleContinueToEditor}
+                  className="self-start px-8 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors shadow-sm"
+                >
+                  Continue to Editor &rarr;
+                </button>
               )}
 
-              {/* Template mode */}
-              {gridMode !== "freeform" && (
-                <TemplateView
-                  result={templateResult}
-                  selectedIndex={selectedTemplate}
-                  onSelect={setSelectedTemplate}
-                  modeName={GRID_MODES.find((m) => m.mode === gridMode)!.label}
-                />
-              )}
+              {/* Detailed strategy description with link to full page */}
+              <StrategyDetailCard strategy={strategy} />
 
-              {/* Add more words */}
               <AddWordWidget
                 words={words}
                 onAddWord={handleAddWord}
@@ -282,7 +392,7 @@ export default function CreatePage() {
 
               <button
                 onClick={handleGenerate}
-                className="self-start px-8 py-3 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+                className="self-start px-8 py-3 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl font-medium hover:bg-gray-800 dark:hover:bg-zinc-300 transition-colors"
               >
                 Re-generate
               </button>
@@ -305,22 +415,246 @@ export default function CreatePage() {
   );
 }
 
+/* ─── Max Words Slider ─── */
+
+function MaxWordsSlider({
+  eligibleCount,
+  value,
+  onChange,
+}: {
+  eligibleCount: number;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const max = Math.max(eligibleCount, 2);
+  const committedSliderValue =
+    value === null ? eligibleCount : Math.min(value, max);
+
+  // Local value while dragging. Updates on every input but doesn't trigger regeneration.
+  const [draftValue, setDraftValue] = useState(committedSliderValue);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Sync the draft when the committed value changes externally
+  useEffect(() => {
+    setDraftValue(committedSliderValue);
+  }, [committedSliderValue]);
+
+  // Stable ref to the latest commit callback so the listener doesn't get re-attached
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  // Attach a native `change` listener, which fires when the user releases the slider
+  // (unlike React's `onChange` which is mapped to the `input` event for range inputs).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const handleChange = () => {
+      const v = Number(el.value);
+      onChangeRef.current(v >= eligibleCount ? null : v);
+    };
+
+    el.addEventListener("change", handleChange);
+    return () => el.removeEventListener("change", handleChange);
+  }, [eligibleCount]);
+
+  const isLimited = value !== null && value < eligibleCount;
+  const isDirty = draftValue !== committedSliderValue;
+
+  return (
+    <div className="flex flex-col gap-2 p-4 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-black dark:text-zinc-100">
+          Word Cap
+        </p>
+        <span className="text-xs text-gray-700 dark:text-zinc-400">
+          {isDirty
+            ? `${draftValue} (release to apply)`
+            : isLimited
+              ? `Using up to ${value} of ${eligibleCount} eligible words`
+              : `Using all ${eligibleCount} eligible words`}
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          ref={inputRef}
+          type="range"
+          min={2}
+          max={max}
+          step={1}
+          value={draftValue}
+          // React's onChange maps to the `input` event and fires continuously during drag
+          onChange={(e) => setDraftValue(Number(e.target.value))}
+          className="flex-1 accent-black dark:accent-zinc-100"
+          disabled={eligibleCount < 2}
+        />
+        <span className="font-mono text-sm font-semibold text-black dark:text-zinc-100 w-12 text-right">
+          {draftValue}
+        </span>
+        {isLimited && (
+          <button
+            onClick={() => onChange(null)}
+            className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 shrink-0"
+          >
+            Use all
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Strategy Selector ─── */
+
+function StrategySelector({
+  strategy,
+  onChange,
+}: {
+  strategy: FreeformStrategy;
+  onChange: (s: FreeformStrategy) => void;
+}) {
+  const userListStrategies = FREEFORM_STRATEGIES.filter(
+    (s) => !s.id.startsWith("adjacency"),
+  );
+  const adjacencyStrategies = FREEFORM_STRATEGIES.filter(
+    (s) => s.id.startsWith("adjacency"),
+  );
+
+  const buttonClass = (id: FreeformStrategy) =>
+    `px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+      strategy === id
+        ? "bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-md"
+        : "bg-gray-100 dark:bg-zinc-900 text-black dark:text-zinc-100 hover:bg-gray-200 dark:hover:bg-zinc-800 border border-gray-200 dark:border-zinc-800"
+    }`;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* User-list-only strategies */}
+      <div>
+        <p className="text-xs font-semibold text-gray-700 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
+          Your words only
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          {userListStrategies.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onChange(s.id)}
+              className={buttonClass(s.id)}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Adjacency variants (all use the dictionary) */}
+      <div>
+        <p className="text-xs font-semibold text-gray-700 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
+          Uses dictionary fill
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          {adjacencyStrategies.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onChange(s.id)}
+              className={buttonClass(s.id)}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-600 dark:text-zinc-500 mt-1.5">
+          {adjacencyStrategies.find((s) => s.id === strategy)?.description ??
+            "Places your words with parallel adjacencies, then fills gaps with real dictionary words."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Strategy Detail Card ─── */
+
+function StrategyDetailCard({ strategy }: { strategy: FreeformStrategy }) {
+  const details = STRATEGY_DETAILS[strategy as import("@/lib/strategy-info").UIStrategy];
+  if (!details) return null;
+
+  return (
+    <div className="border border-gray-200 dark:border-zinc-800 rounded-xl p-6 flex flex-col gap-4 bg-gray-50/50 dark:bg-zinc-900/50">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-mono text-gray-600 dark:text-zinc-400 uppercase tracking-wider">
+            Active Strategy
+          </p>
+          <h3 className="text-xl font-bold text-black dark:text-zinc-100">{details.name}</h3>
+        </div>
+        <a
+          href={`/about/strategies/${details.id}`}
+          className="px-4 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-medium text-black dark:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+        >
+          Full breakdown &rarr;
+        </a>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {details.summary.map((p, i) => (
+          <p key={i} className="text-sm text-gray-800 dark:text-zinc-300 leading-relaxed">
+            {p}
+          </p>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+        <div>
+          <p className="text-xs font-semibold text-black dark:text-zinc-100 mb-1.5 uppercase tracking-wide">
+            Strengths
+          </p>
+          <ul className="text-xs text-gray-700 dark:text-zinc-400 flex flex-col gap-1">
+            {details.strengths.slice(0, 3).map((s, i) => (
+              <li key={i} className="flex gap-1.5">
+                <span className="text-green-700 dark:text-green-400 shrink-0">✓</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-black dark:text-zinc-100 mb-1.5 uppercase tracking-wide">
+            Weaknesses
+          </p>
+          <ul className="text-xs text-gray-700 dark:text-zinc-400 flex flex-col gap-1">
+            {details.weaknesses.slice(0, 3).map((w, i) => (
+              <li key={i} className="flex gap-1.5">
+                <span className="text-amber-700 dark:text-amber-400 shrink-0">!</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Freeform results view ─── */
 
 function FreeformView({
   results,
   selectedIndex,
   onSelect,
+  hideUnplaced,
 }: {
   results: FreeformResult[];
   selectedIndex: number | null;
   onSelect: (i: number) => void;
+  hideUnplaced?: boolean;
 }) {
   if (results.length === 0) {
     return (
-      <div className="p-5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-gray-800">
-        Couldn't create a crossword &mdash; your words don't share enough letters to intersect.
-        Try adding words with common letters (A, E, R, S, T).
+      <div className="p-5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl text-sm text-gray-800 dark:text-zinc-300">
+        Couldn't create a crossword &mdash; your words don't share enough letters
+        to intersect. Try adding words with common letters (A, E, R, S, T).
       </div>
     );
   }
@@ -335,12 +669,12 @@ function FreeformView({
               onClick={() => onSelect(i)}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                 selectedIndex === i
-                  ? "bg-gray-800 text-white shadow-sm"
-                  : "bg-gray-50 text-black hover:bg-gray-100 border border-gray-200"
+                  ? "bg-gray-800 dark:bg-zinc-200 text-white dark:text-zinc-900 shadow-sm"
+                  : "bg-gray-50 dark:bg-zinc-900 text-black dark:text-zinc-100 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-gray-200 dark:border-zinc-800"
               }`}
             >
               Layout {i + 1}
-              <span className={`ml-2 text-xs ${selectedIndex === i ? "text-gray-400" : "text-gray-600"}`}>
+              <span className={`ml-2 text-xs ${selectedIndex === i ? "text-gray-400 dark:text-zinc-500" : "text-gray-600 dark:text-zinc-400"}`}>
                 {result.placed.length} words &middot; {result.intersections} crosses
               </span>
             </button>
@@ -352,116 +686,10 @@ function FreeformView({
         <FreeformPreview
           result={results[selectedIndex]}
           cellSize={results[selectedIndex].cols <= 10 ? 40 : 28}
+          hideUnplaced={hideUnplaced}
         />
       )}
     </>
-  );
-}
-
-/* ─── Template results view ─── */
-
-function TemplateView({
-  result,
-  selectedIndex,
-  onSelect,
-  modeName,
-}: {
-  result: TemplateResult | null;
-  selectedIndex: number | null;
-  onSelect: (i: number) => void;
-  modeName: string;
-}) {
-  const [fallbackSelected, setFallbackSelected] = useState<number>(0);
-
-  if (!result) {
-    return (
-      <div className="flex items-center gap-3 py-8">
-        <div className="w-6 h-6 border-3 border-gray-200 border-t-black rounded-full animate-spin" />
-        <span className="text-sm text-gray-700">Solving {modeName} grid...</span>
-      </div>
-    );
-  }
-
-  // CSP solutions found — perfect fills
-  if (result.solutions.length > 0) {
-    return (
-      <>
-        <p className="text-sm text-gray-800">
-          Found {result.solutions.length} perfect {modeName} fill{result.solutions.length !== 1 ? "s" : ""}.
-        </p>
-
-        {result.solutions.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {result.solutions.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => onSelect(i)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                  selectedIndex === i
-                    ? "bg-gray-800 text-white shadow-sm"
-                    : "bg-gray-50 text-black hover:bg-gray-100 border border-gray-200"
-                }`}
-              >
-                Solution {i + 1}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {selectedIndex !== null && result.solutions[selectedIndex] && (
-          <div className="flex flex-col items-center gap-3">
-            <CrosswordGrid
-              grid={result.solutions[selectedIndex].grid}
-              cellSize={result.solutions[selectedIndex].grid.cols <= 5 ? 48 : 32}
-            />
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // CSP solver failed — show freeform fallback
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-        <p className="text-black font-semibold mb-1">
-          A strict {modeName} grid requires very specific letter overlaps.
-        </p>
-        <p className="text-gray-800">
-          Your words don't have enough compatible crossings to fill a standard {modeName} template.
-          Here's the best freeform layout instead. Adding more words with common letters (A, E, R, S, T) improves results.
-        </p>
-      </div>
-
-      {result.freeformFallback && result.freeformFallback.length > 0 && (
-        <>
-          {result.freeformFallback.length > 1 && (
-            <div className="flex gap-2 flex-wrap">
-              {result.freeformFallback.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => setFallbackSelected(i)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                    fallbackSelected === i
-                      ? "bg-gray-800 text-white shadow-sm"
-                      : "bg-gray-50 text-black hover:bg-gray-100 border border-gray-200"
-                  }`}
-                >
-                  Layout {i + 1}
-                  <span className={`ml-2 text-xs ${fallbackSelected === i ? "text-gray-400" : "text-gray-600"}`}>
-                    {r.placed.length} words
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-          <FreeformPreview
-            result={result.freeformFallback[fallbackSelected]}
-            cellSize={result.freeformFallback[fallbackSelected].cols <= 10 ? 40 : 28}
-          />
-        </>
-      )}
-    </div>
   );
 }
 
@@ -484,10 +712,22 @@ function AddWordWidget({
 
   const handleAdd = () => {
     const w = word.trim().toUpperCase();
-    if (!w) { setError("Enter a word"); return; }
-    if (!/^[A-Z]+$/.test(w)) { setError("Words can only contain letters A\u2013Z"); return; }
-    if (w.length < 3) { setError("Words must be at least 3 letters"); return; }
-    if (words.some((e) => e.word.toUpperCase() === w)) { setError("This word is already in your list"); return; }
+    if (!w) {
+      setError("Enter a word");
+      return;
+    }
+    if (!/^[A-Z]+$/.test(w)) {
+      setError("Words can only contain letters A–Z");
+      return;
+    }
+    if (w.length < 3) {
+      setError("Words must be at least 3 letters");
+      return;
+    }
+    if (words.some((e) => e.word.toUpperCase() === w)) {
+      setError("This word is already in your list");
+      return;
+    }
     onAddWord({ word: w, clue: clue.trim() || `Clue for ${w}` });
     setWord("");
     setClue("");
@@ -504,13 +744,23 @@ function AddWordWidget({
     const errors: string[] = [];
 
     for (const line of lines) {
-      const match = line.match(/^([A-Za-z]+)\s*[-:,\t]\s*(.*)$/) ||
-                    line.match(/^([A-Za-z]+)$/);
-      if (!match) { errors.push(`Couldn't parse: "${line}"`); continue; }
+      const match =
+        line.match(/^([A-Za-z]+)\s*[-:,\t]\s*(.*)$/) ||
+        line.match(/^([A-Za-z]+)$/);
+      if (!match) {
+        errors.push(`Couldn't parse: "${line}"`);
+        continue;
+      }
       const w = match[1].toUpperCase();
       const c = match[2]?.trim() || `Clue for ${w}`;
-      if (w.length < 3) { errors.push(`"${w}" is too short (min 3 letters)`); continue; }
-      if (!newWords.some((nw) => nw.word === w) && !words.some((ew) => ew.word === w)) {
+      if (w.length < 3) {
+        errors.push(`"${w}" is too short (min 3 letters)`);
+        continue;
+      }
+      if (
+        !newWords.some((nw) => nw.word === w) &&
+        !words.some((ew) => ew.word === w)
+      ) {
         newWords.push({ word: w, clue: c });
       }
     }
@@ -524,19 +774,22 @@ function AddWordWidget({
   };
 
   return (
-    <div className="p-5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col gap-3">
+    <div className="p-5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-black font-semibold">Add Words</p>
+        <p className="text-sm text-black dark:text-zinc-100 font-semibold">Add Words</p>
         <button
-          onClick={() => { setMode(mode === "single" ? "bulk" : "single"); setError(null); }}
-          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+          onClick={() => {
+            setMode(mode === "single" ? "bulk" : "single");
+            setError(null);
+          }}
+          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
         >
           {mode === "single" ? "Bulk import" : "Single entry"}
         </button>
       </div>
 
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-lg">{error}</p>
+        <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-1.5 rounded-lg">{error}</p>
       )}
 
       {mode === "single" ? (
@@ -547,7 +800,7 @@ function AddWordWidget({
             onChange={(e) => setWord(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             placeholder="Word"
-            className="w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-36 px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-mono uppercase bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <input
             type="text"
@@ -555,11 +808,11 @@ function AddWordWidget({
             onChange={(e) => setClue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             placeholder="Clue (optional)"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <button
             onClick={handleAdd}
-            className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+            className="px-4 py-2 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg text-sm font-medium hover:bg-gray-800 dark:hover:bg-zinc-300 transition-colors"
           >
             Add
           </button>
@@ -570,12 +823,12 @@ function AddWordWidget({
             value={bulkInput}
             onChange={(e) => setBulkInput(e.target.value)}
             placeholder={"WORD - clue\nWORD - clue\nor just one word per line"}
-            className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm resize-y bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full h-32 px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg font-mono text-sm resize-y bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <button
             onClick={handleBulkImport}
             disabled={!bulkInput.trim()}
-            className="self-end px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="self-end px-4 py-2 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg text-sm font-medium hover:bg-gray-800 dark:hover:bg-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             Import Words
           </button>
