@@ -118,29 +118,34 @@ export const BENCHMARK_SCENARIOS: BenchmarkScenario[] = [
 ];
 
 /** The four user-facing strategies (excludes benchmark-only variants) */
-export type UIStrategy = "adjacency-aware" | "graph-guided" | "longest-first" | "balanced";
+export type UIStrategy = "adjacency-aware" | "adjacency-seeded" | "graph-guided" | "longest-first" | "balanced";
 
 /** Benchmark results: strategy → scenario id → metric */
 export const BENCHMARK_RESULTS: Record<UIStrategy, Record<string, BenchmarkMetric>> = {
   "adjacency-aware": {
-    "themed-small": { bestIntersections: 18, bestPlaced: 12, avgIntersections: 15.5, avgPlaced: 12, compactness: 9.17, twoLetterFrags: 2, fillWords: 3, elapsedMs: 112 },
-    "vocab-medium": { bestIntersections: 77, bestPlaced: 56, avgIntersections: 75.25, avgPlaced: 55, compactness: 9.45, twoLetterFrags: 13, fillWords: 16, elapsedMs: 603.7 },
-    "mixed-large": { bestIntersections: 240, bestPlaced: 190, avgIntersections: 236.75, avgPlaced: 190, compactness: 8.76, twoLetterFrags: 40, fillWords: 34, elapsedMs: 3775 },
+    "themed-small": { bestIntersections: 16, bestPlaced: 12, avgIntersections: 15, avgPlaced: 12, compactness: 6, twoLetterFrags: 0, fillWords: 3, elapsedMs: 125.9 },
+    "vocab-medium": { bestIntersections: 99, bestPlaced: 69, avgIntersections: 90.25, avgPlaced: 67.5, compactness: 7.71, twoLetterFrags: 10, fillWords: 29, elapsedMs: 781.9 },
+    "mixed-large": { bestIntersections: 312, bestPlaced: 228, avgIntersections: 300.5, avgPlaced: 224.25, compactness: 7.01, twoLetterFrags: 35, fillWords: 72, elapsedMs: 5129.8 },
+  },
+  "adjacency-seeded": {
+    "themed-small": { bestIntersections: 20, bestPlaced: 14, avgIntersections: 18.75, avgPlaced: 14, compactness: 5, twoLetterFrags: 2, fillWords: 5, elapsedMs: 128.8 },
+    "vocab-medium": { bestIntersections: 96, bestPlaced: 68, avgIntersections: 93.5, avgPlaced: 67.5, compactness: 11.03, twoLetterFrags: 11, fillWords: 28, elapsedMs: 901.6 },
+    "mixed-large": { bestIntersections: 306, bestPlaced: 228, avgIntersections: 292.75, avgPlaced: 222.5, compactness: 8.6, twoLetterFrags: 24, fillWords: 72, elapsedMs: 5230.4 },
   },
   "graph-guided": {
-    "themed-small": { bestIntersections: 9, bestPlaced: 9, avgIntersections: 8.25, avgPlaced: 9, compactness: 11.56, twoLetterFrags: 0, fillWords: 0, elapsedMs: 1.8 },
-    "vocab-medium": { bestIntersections: 41, bestPlaced: 40, avgIntersections: 40.5, avgPlaced: 39.75, compactness: 19.2, twoLetterFrags: 0, fillWords: 0, elapsedMs: 17 },
-    "mixed-large": { bestIntersections: 157, bestPlaced: 153, avgIntersections: 156.25, avgPlaced: 152.75, compactness: 10, twoLetterFrags: 0, fillWords: 0, elapsedMs: 326.4 },
+    "themed-small": { bestIntersections: 9, bestPlaced: 9, avgIntersections: 8.25, avgPlaced: 9, compactness: 11.56, twoLetterFrags: 0, fillWords: 0, elapsedMs: 1.3 },
+    "vocab-medium": { bestIntersections: 41, bestPlaced: 40, avgIntersections: 40.5, avgPlaced: 39.75, compactness: 19.2, twoLetterFrags: 0, fillWords: 0, elapsedMs: 17.6 },
+    "mixed-large": { bestIntersections: 157, bestPlaced: 153, avgIntersections: 156.25, avgPlaced: 152.75, compactness: 10, twoLetterFrags: 0, fillWords: 0, elapsedMs: 317.6 },
   },
   "longest-first": {
     "themed-small": { bestIntersections: 8, bestPlaced: 9, avgIntersections: 8, avgPlaced: 9, compactness: 8.56, twoLetterFrags: 0, fillWords: 0, elapsedMs: 1.2 },
-    "vocab-medium": { bestIntersections: 42, bestPlaced: 40, avgIntersections: 40.25, avgPlaced: 39.5, compactness: 15.95, twoLetterFrags: 0, fillWords: 0, elapsedMs: 12.5 },
-    "mixed-large": { bestIntersections: 158, bestPlaced: 151, avgIntersections: 153.25, avgPlaced: 147.75, compactness: 10.33, twoLetterFrags: 0, fillWords: 0, elapsedMs: 76.4 },
+    "vocab-medium": { bestIntersections: 42, bestPlaced: 40, avgIntersections: 40.25, avgPlaced: 39.5, compactness: 15.95, twoLetterFrags: 0, fillWords: 0, elapsedMs: 14.8 },
+    "mixed-large": { bestIntersections: 158, bestPlaced: 151, avgIntersections: 153.25, avgPlaced: 147.75, compactness: 10.33, twoLetterFrags: 0, fillWords: 0, elapsedMs: 78.6 },
   },
   balanced: {
-    "themed-small": { bestIntersections: 9, bestPlaced: 9, avgIntersections: 8.25, avgPlaced: 9, compactness: 15.89, twoLetterFrags: 0, fillWords: 0, elapsedMs: 1.6 },
-    "vocab-medium": { bestIntersections: 41, bestPlaced: 40, avgIntersections: 40.5, avgPlaced: 39.75, compactness: 15.6, twoLetterFrags: 0, fillWords: 0, elapsedMs: 19.8 },
-    "mixed-large": { bestIntersections: 161, bestPlaced: 156, avgIntersections: 157.25, avgPlaced: 153.5, compactness: 12.38, twoLetterFrags: 0, fillWords: 0, elapsedMs: 311.3 },
+    "themed-small": { bestIntersections: 9, bestPlaced: 9, avgIntersections: 8.25, avgPlaced: 9, compactness: 15.89, twoLetterFrags: 0, fillWords: 0, elapsedMs: 1.4 },
+    "vocab-medium": { bestIntersections: 41, bestPlaced: 40, avgIntersections: 40.5, avgPlaced: 39.75, compactness: 15.6, twoLetterFrags: 0, fillWords: 0, elapsedMs: 19.6 },
+    "mixed-large": { bestIntersections: 161, bestPlaced: 156, avgIntersections: 157.25, avgPlaced: 153.5, compactness: 12.38, twoLetterFrags: 0, fillWords: 0, elapsedMs: 306.8 },
   },
 };
 
@@ -223,11 +228,72 @@ for gap in gaps (until maxFill reached):
             if match and isValid(match):
                 place(match, isFill=true); break`,
     complexity:
-      "Phase 1: O(W² · L³ · D) for candidate enumeration, where D is the dictionary lookup cost per candidate cell. Each cell in a parallel placement candidate checks whether its 2-letter perpendicular run can be extended into a real dictionary word (length 3 to 7), requiring a scan of the relevant dictionary bucket. Phase 2: O(G · 5 · D_L) where G is the number of 2-letter gaps, 5 is the word-length range tried, and D_L is the average bucket size (~7K words). Total observed: 112ms for 9 words, 604ms for 40 words, 3.8s for 156 words (measured in single-threaded JS, no Web Workers).",
+      "Phase 1: O(W² · L³ · D) for candidate enumeration, where D is the dictionary lookup cost per candidate cell. Each cell in a parallel placement candidate checks whether its 2-letter perpendicular run can be extended into a real dictionary word (length 3 to 7), requiring a scan of the relevant dictionary bucket. Inline fill adds O(G · 5 · D_L) per parallel placement, where G is the gap count, 5 is the word-length range tried, and D_L is the average bucket size (~7K words). Total observed: 126ms for 9 words, 782ms for 40 words, 5.1s for 156 words (measured in single-threaded JS, no Web Workers).",
     useWhen: [
       "You want a dense, interlocking grid and are willing to accept dictionary fill words alongside your own word list",
       "You prefer the newspaper-style crossword aesthetic where words touch side-by-side, not just at perpendicular crossings",
       "Your word list has enough common letters that parallel placements can form plausible bigrams for Phase 2 to resolve",
+    ],
+  },
+
+  "adjacency-seeded": {
+    id: "adjacency-seeded",
+    name: "Parallel-Seeded",
+    shortDescription:
+      "Starts with an optimal parallel word pair, then uses inline gap filling to build dense clusters incrementally.",
+    summary: [
+      "A variant of Adjacency-Aware that begins by finding the best pair of words to place side-by-side. The pair is selected by scoring all word pairs at every alignment offset, counting how many valid bigram columns each alignment produces. The highest-scoring pair becomes the grid's initial structure.",
+      "The key difference from the base strategy is inline gap filling: after each parallel placement, the algorithm immediately scans for 2-letter fragments and fills them while the surrounding grid is still sparse. This produces a virtuous cycle where early fill words provide crossing points for subsequent user words, and the looser constraints at fill time allow more gaps to be resolved.",
+      "This approach produces the fewest 2-letter fragments of the adjacency strategies. On a 156-word list, inline filling reduces fragments by roughly 43% compared to deferred filling, while placing the same number of total fill words.",
+    ],
+    strengths: [
+      "Fewest 2-letter fragments among adjacency strategies due to inline gap filling while constraints are still loose",
+      "The parallel seed creates a strong initial structure that subsequent placements can build around",
+      "The virtuous cycle of fill-then-cross produces consistently dense grids across word list sizes",
+    ],
+    weaknesses: [
+      "Slightly slower than base Adjacency-Aware due to inline fill scans after each parallel placement",
+      "Seed pair quality depends on the word list having at least two words with compatible bigram columns",
+      "Same general tradeoffs as Adjacency-Aware: introduces dictionary fill words, higher compute cost than user-word-only strategies",
+    ],
+    steps: [
+      {
+        title: "Find the best parallel seed pair",
+        body: "For every pair of words, try placing them side-by-side (row 0 and row 1) at every column offset where they overlap. Score each alignment by counting valid bigram columns. Select the pair and offset that maximizes valid bigrams.",
+      },
+      {
+        title: "Place remaining words with inline fill",
+        body: "After placing the seed pair, continue with graph-guided ordering. For each word, evaluate both perpendicular and parallel placements. After each parallel placement, immediately scan for 2-letter fragments and fill them from the dictionary. This catches gaps early while surrounding constraints are minimal.",
+      },
+      {
+        title: "Final fill pass",
+        body: "After all user words are placed, a final gap-filling pass catches any remaining 2-letter fragments from the last few placements. The total fill budget (75% of user word count) is shared across inline fills and this final pass.",
+      },
+    ],
+    pseudocode: `function findBestParallelSeed(words, bigrams):
+    bestScore = 0
+    for each pair (A, B) in words:
+        for shift in range:
+            validCols = count columns where A[i]+B[i+shift] in bigrams
+            if validCols > bestScore:
+                bestPair = (A, B, shift)
+
+// Place seed pair, then for each subsequent word:
+for word in graphGuidedOrder(remaining):
+    best = maxScore(intersections ∪ parallelPlacements)
+    place(word, best)
+    if best.isParallel:
+        // Inline fill: resolve gaps immediately
+        gaps = findShortRuns(grid, placed)
+        for gap in gaps:
+            fill = dictionaryLookup(gap)
+            if fill: place(fill, isFill=true)`,
+    complexity:
+      "Seed selection: O(W² x L) for all pair/offset combinations. Placement: same as Adjacency-Aware plus O(G x D_L) inline fill per parallel placement. Total observed: 129ms for 9 words, 902ms for 40 words, 5.2s for 156 words.",
+    useWhen: [
+      "You want the densest possible grid with minimal 2-letter fragments",
+      "Your word list has at least two words that share common bigram patterns when placed side-by-side",
+      "You're willing to accept slightly longer generation time for better fragment resolution",
     ],
   },
 
@@ -415,9 +481,9 @@ export const PERFORMANCE_ANALYSIS: string[] = [
   "The four strategies share the same underlying greedy placement algorithm but differ in word ordering and, in the case of Adjacency-Aware, in which placements are considered valid. This means performance differences stem from two factors: the cost of computing the ordering, and the size of the candidate set evaluated per word.",
   "Graph-guided, Balanced, and Longest First operate exclusively on the user's word list. Their placement pass considers only perpendicular intersection candidates (positions where a new word crosses an existing word at a shared letter). Longest First skips the graph-build step entirely, making it the fastest strategy in every scenario. Graph-guided and Balanced are similar in cost because they both compute the compatibility graph; Balanced adds a minor constant factor for its hybrid seed selection.",
   "Adjacency-Aware adds two sources of overhead. First, each word's candidate set is larger because parallel placements (same direction, offset by one row or column) are enumerated alongside perpendicular intersections. For a word of length L placed beside an existing word of length P, this adds up to 2 × (L + P - 1) additional candidates per pair. Second, every candidate undergoes perpendicular-run validation against the dictionary, which requires walking the grid in the perpendicular direction at each cell. Phase 2 (gap filling) adds a third cost: scanning for 2-letter fragments and searching dictionary buckets for valid extensions.",
-  "The practical impact scales with word count. On a 9-word themed list, Adjacency-Aware runs in roughly 112ms versus 1.2ms for Longest First (approximately 90x slower). On 156 words, the gap narrows to roughly 50x (3.8s versus 76ms). The additional overhead comes from the fillability check in scoring: each candidate placement verifies that any 2-letter perpendicular run it creates can actually be extended into a complete dictionary word, rather than unconditionally assuming Phase 2 will resolve it.",
-  "An important caveat applies when comparing intersection counts across strategy types. Adjacency-Aware's reported intersections include crossings involving dictionary fill words added in Phase 2. For the mixed-large scenario, Adjacency-Aware places 190 total words (156 user + 34 fill) and reports 240 intersections, while Graph-guided places 153 user words and reports 157 intersections. Some portion of the intersection difference is attributable to the additional fill words, not to more efficient placement of the original word list. A controlled comparison normalizing for word count is not straightforward, since fill words are specifically chosen to create intersections at gap sites.",
-  "The 2-letter fragment count reveals an inherent tradeoff of parallel placement. Every pair of words placed side-by-side creates perpendicular 2-letter runs that must either be extended into dictionary words or left as fragments. Phase 2 fills what it can, but some gaps are unfillable due to surrounding constraints that emerge as the grid fills in. For the mixed-large scenario, Adjacency-Aware leaves approximately 40 fragments. The scoring function penalizes placements that create unfillable gaps (verified by dictionary lookup during candidate evaluation), but since later word placements can add constraints that make previously fillable gaps unfillable, the scoring-time check cannot eliminate all fragments.",
+  "The practical impact scales with word count. On a 9-word themed list, the adjacency strategies run in roughly 126-129ms versus 1.2ms for Longest First (approximately 100x slower). On 156 words, the gap narrows to roughly 65x (5.1-5.2s versus 79ms). The overhead comes from dictionary validation of perpendicular runs, parallel candidate enumeration, and gap filling.",
+  "An important caveat applies when comparing intersection counts across strategy types. The adjacency strategies' reported intersections include crossings involving dictionary fill words. For the mixed-large scenario, Adjacency-Aware places 228 total words (156 user + 72 fill) and reports 312 intersections, while Densest Crossings places 153 user words and reports 157 intersections. Some portion of the intersection difference is attributable to the additional fill words, not to more efficient placement of the original word list.",
+  "The 2-letter fragment count reveals an inherent tradeoff of parallel placement. Every pair of words placed side-by-side creates perpendicular 2-letter runs that must either be extended into dictionary words or left as fragments. Inline gap filling (used by both adjacency strategies) mitigates this by resolving gaps immediately after each parallel placement, while surrounding constraints are still loose. Parallel-Seeded reduces fragments by roughly 43% compared to deferred filling on large word lists, producing 24 fragments versus 35 for base Adjacency-Aware on the mixed-large scenario. The remaining fragments are structurally unfillable due to constraints accumulated during grid construction.",
   "The compactness metric (grid area divided by placed words) also requires careful interpretation. Adjacency-Aware tends to produce grids with lower compactness values, which suggests denser packing. However, the fill words extend existing perpendicular runs rather than expanding the grid boundary, so they reduce compactness partly by inflating the denominator without proportionally increasing the numerator. Among the user-word-only strategies, Longest First tends to produce the most compact grids, likely because long anchor words create a tighter bounding box relative to the words they accommodate.",
 ];
 

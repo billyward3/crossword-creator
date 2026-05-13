@@ -43,9 +43,7 @@ export function solveFreeform(
  */
 export type FreeformStrategy =
   | "adjacency-aware"        // Two-phase: bigram-validated parallel + dictionary fill
-  | "adjacency-seeded"       // Variant: parallel seed pair + standard gap weight
-  | "adjacency-biased"       // Variant: standard seed + higher gap weight (6)
-  | "adjacency-seeded-biased" // Variant: parallel seed + higher gap weight (6)
+  | "adjacency-seeded"       // Variant: parallel seed pair + inline gap filling
   | "graph-guided"           // Connectivity-based ordering (densest crossings)
   | "longest-first"          // Place longest words first (anchors)
   | "balanced";              // Mix of both approaches
@@ -68,18 +66,6 @@ export const FREEFORM_STRATEGIES: FreeformStrategyInfo[] = [
     name: "Parallel-Seeded",
     description:
       "Starts with the best pair of words placed side-by-side, then continues with standard adjacency-aware placement and gap filling.",
-  },
-  {
-    id: "adjacency-biased",
-    name: "Parallel-Biased",
-    description:
-      "Adjacency-aware with higher scoring weight for parallel placements, making them competitive earlier. Places more fill words.",
-  },
-  {
-    id: "adjacency-seeded-biased",
-    name: "Seeded + Biased",
-    description:
-      "Combines parallel seeding with biased scoring. Starts with a parallel pair and favors parallel placements throughout.",
   },
   {
     id: "graph-guided",
@@ -154,8 +140,6 @@ export function solveFreeformMultiple(
         break;
       case "adjacency-aware":
       case "adjacency-seeded":
-      case "adjacency-biased":
-      case "adjacency-seeded-biased":
         ordered = graphGuidedOrder(words, graph, attempt);
         break;
       case "graph-guided":
@@ -164,9 +148,8 @@ export function solveFreeformMultiple(
         break;
     }
 
-    const useParallelSeed = strategy === "adjacency-seeded" || strategy === "adjacency-seeded-biased";
-    const useGapWeight = (strategy === "adjacency-biased" || strategy === "adjacency-seeded-biased") ? 6 : undefined;
-    const result = placeWords(ordered, maxPlaced, validWords ?? undefined, validBigrams ?? undefined, useParallelSeed, useGapWeight);
+    const useParallelSeed = strategy === "adjacency-seeded";
+    const result = placeWords(ordered, maxPlaced, validWords ?? undefined, validBigrams ?? undefined, useParallelSeed);
     if (result.placed.length < 2) continue;
 
     const signature = resultSignature(result);
@@ -464,7 +447,6 @@ interface PlacementOptions {
   validWords?: Set<string>;
   validBigrams?: Set<string>;
   parallelSeed?: boolean;
-  gapWeight?: number;
 }
 
 /**
@@ -481,7 +463,6 @@ function placeWords(
   validWords?: Set<string>,
   validBigrams?: Set<string>,
   parallelSeed?: boolean,
-  gapWeight?: number,
 ): FreeformResult {
   const placed: PlacedWord[] = [];
   const unplaced: WordEntry[] = [];
@@ -543,12 +524,17 @@ function placeWords(
     ? new Set(placed.map((p) => p.word))
     : new Set([entries[0].word.toUpperCase()]);
 
+  // Track fill words separately so we can count them against the cap
+  const fillPlaced: PlacedWord[] = [];
+  const placedSet = validWords ? new Set(placed.map((p) => p.word)) : undefined;
+  const maxFill = Math.max(3, Math.floor(entries.length * 0.75));
+
   // Place remaining words
   for (let wi = 0; wi < entries.length; wi++) {
     if (seededWords.has(entries[wi].word.toUpperCase())) continue;
     const entry = entries[wi];
     const word = entry.word.toUpperCase();
-    const best = findBestPlacement(word, cells, placed, validWords, validBigrams, gapWeight, wordsByLength);
+    const best = findBestPlacement(word, cells, placed, validWords, validBigrams, wordsByLength);
 
     if (best) {
       for (let i = 0; i < word.length; i++) {
@@ -564,6 +550,28 @@ function placeWords(
         direction: best.direction,
       });
 
+      // Inline fill: after a parallel placement, immediately fill any
+      // 2-letter gaps it created while constraints are still loose.
+      if (best.isParallel && validWords && validBigrams && wordsByLength && placedSet) {
+        if (fillPlaced.length < maxFill) {
+          const gaps = findShortRuns(cells, placed).filter((g) => g.letters.length === 2);
+          for (const gap of gaps) {
+            if (fillPlaced.length >= maxFill) break;
+            const fill = tryFillGap(gap, cells, wordsByLength, validWords, validBigrams, placedSet);
+            if (fill) {
+              for (let i = 0; i < fill.word.length; i++) {
+                const r = fill.row + (fill.direction === "down" ? i : 0);
+                const c = fill.col + (fill.direction === "across" ? i : 0);
+                cells.set(`${r},${c}`, fill.word[i]);
+              }
+              placed.push(fill);
+              fillPlaced.push(fill);
+              placedSet.add(fill.word);
+            }
+          }
+        }
+      }
+
       // Cap reached, so stop here. Remaining words weren't *unplaced*,
       // they were intentionally skipped, so don't report them.
       if (placed.length >= cap) break;
@@ -572,10 +580,10 @@ function placeWords(
     }
   }
 
-  // Phase 2: fill perpendicular gaps created by parallel placements
+  // Final fill pass: catch any remaining gaps from the last few placements
   if (validWords && validBigrams) {
-    const fillWords = fillPerpendicularGaps(cells, placed, validWords, validBigrams);
-    placed.push(...fillWords);
+    const finalFills = fillPerpendicularGaps(cells, placed, validWords, validBigrams, maxFill - fillPlaced.length);
+    placed.push(...finalFills);
   }
 
   return buildResult(placed, unplaced, cells);
@@ -586,6 +594,7 @@ interface Placement {
   col: number;
   direction: "across" | "down";
   score: number;
+  isParallel: boolean;
 }
 
 /**
@@ -607,7 +616,6 @@ function findBestPlacement(
   placed: PlacedWord[],
   validWords?: Set<string>,
   validBigrams?: Set<string>,
-  gapWeight?: number,
   wordsByLength?: Map<number, string[]>,
 ): Placement | null {
   const candidates: Placement[] = [];
@@ -642,10 +650,9 @@ function findBestPlacement(
             direction,
             cells,
             validWords,
-            gapWeight,
             wordsByLength,
           );
-          candidates.push({ row: startRow, col: startCol, direction, score });
+          candidates.push({ row: startRow, col: startCol, direction, score, isParallel: false });
         }
       }
     }
@@ -699,10 +706,9 @@ function findBestPlacement(
             direction,
             cells,
             validWords,
-            gapWeight,
             wordsByLength,
           );
-          candidates.push({ row: startRow, col: startCol, direction, score });
+          candidates.push({ row: startRow, col: startCol, direction, score, isParallel: true });
         }
       }
     }
@@ -917,7 +923,6 @@ function scorePlacement(
   direction: "across" | "down",
   cells: Map<string, string>,
   validWords?: Set<string>,
-  gapWeight?: number,
   wordsByLength?: Map<number, string[]>,
 ): number {
   const dr = direction === "down" ? 1 : 0;
@@ -964,8 +969,7 @@ function scorePlacement(
     }
   }
 
-  const gw = gapWeight ?? 2;
-  return intersections * 10 + validPerpWords * 8 + fillableGaps * gw - unfillableGaps * gw * 2 + openAnchors;
+  return intersections * 10 + validPerpWords * 8 + fillableGaps * 2 - unfillableGaps * 4 + openAnchors;
 }
 
 /**
@@ -1183,6 +1187,7 @@ function fillPerpendicularGaps(
   placed: PlacedWord[],
   validWords: Set<string>,
   validBigrams: Set<string>,
+  remainingBudget?: number,
 ): PlacedWord[] {
   const wordsByLength = new Map<number, string[]>();
   for (const word of validWords) {
@@ -1194,7 +1199,7 @@ function fillPerpendicularGaps(
 
   const placedSet = new Set(placed.map((p) => p.word));
   const fillPlaced: PlacedWord[] = [];
-  const maxFill = Math.max(3, Math.floor(placed.length * 0.75));
+  const maxFill = remainingBudget ?? Math.max(3, Math.floor(placed.length * 0.75));
 
   const gaps = findShortRuns(cells, placed).filter((g) => g.letters.length === 2);
 

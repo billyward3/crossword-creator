@@ -29,8 +29,6 @@ const DICT = loadDict();
 const STRATEGIES: FreeformStrategy[] = [
   "adjacency-aware",
   "adjacency-seeded",
-  "adjacency-biased",
-  "adjacency-seeded-biased",
   "graph-guided",
   "longest-first",
   "balanced",
