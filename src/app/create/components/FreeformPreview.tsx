@@ -5,9 +5,15 @@ import type { FreeformResult } from "@/engine/freeform";
 interface FreeformPreviewProps {
   result: FreeformResult;
   cellSize?: number;
+  /** When true, suppress the "couldn't be placed" widget (e.g., a word cap is active). */
+  hideUnplaced?: boolean;
 }
 
-export function FreeformPreview({ result, cellSize = 36 }: FreeformPreviewProps) {
+export function FreeformPreview({
+  result,
+  cellSize = 36,
+  hideUnplaced = false,
+}: FreeformPreviewProps) {
   const { grid, rows, cols, placed, unplaced, intersections } = result;
 
   if (placed.length === 0) return null;
@@ -77,28 +83,28 @@ export function FreeformPreview({ result, cellSize = 36 }: FreeformPreviewProps)
           )}
         </svg>
 
-        <div className="flex gap-3 text-xs text-gray-700">
-          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+        <div className="flex gap-3 text-xs text-gray-700 dark:text-zinc-300">
+          <span className="px-2.5 py-1 bg-gray-100 dark:bg-zinc-800 rounded-full">
             {placed.length} word{placed.length !== 1 ? "s" : ""} placed
           </span>
-          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+          <span className="px-2.5 py-1 bg-gray-100 dark:bg-zinc-800 rounded-full">
             {intersections} intersection{intersections !== 1 ? "s" : ""}
           </span>
-          <span className="px-2.5 py-1 bg-gray-100 rounded-full">
+          <span className="px-2.5 py-1 bg-gray-100 dark:bg-zinc-800 rounded-full">
             {rows}&times;{cols} grid
           </span>
         </div>
       </div>
 
-      {unplaced.length > 0 && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-          <p className="font-semibold text-black mb-1">
+      {!hideUnplaced && unplaced.length > 0 && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl text-sm">
+          <p className="font-semibold text-black dark:text-zinc-100 mb-1">
             {unplaced.length} word{unplaced.length !== 1 ? "s" : ""} couldn't be placed
           </p>
-          <p className="text-gray-800 mb-1">
+          <p className="text-gray-800 dark:text-zinc-300 mb-1">
             {unplaced.map((w) => w.word).join(", ")}
           </p>
-          <p className="text-gray-700 text-xs">
+          <p className="text-gray-700 dark:text-zinc-400 text-xs">
             These words don't share enough letters with the placed words to create crossings.
             Adding words with common letters (A, E, R, S, T) helps.
           </p>

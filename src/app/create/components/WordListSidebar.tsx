@@ -21,6 +21,13 @@ export function WordListSidebar({
   const [showImport, setShowImport] = useState(false);
   const [bulkInput, setBulkInput] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [sortAlpha, setSortAlpha] = useState(false);
+
+  const displayedWords = sortAlpha
+    ? [...words]
+        .map((entry, originalIndex) => ({ entry, originalIndex }))
+        .sort((a, b) => a.entry.word.localeCompare(b.entry.word))
+    : words.map((entry, originalIndex) => ({ entry, originalIndex }));
 
   const toggleSelect = (index: number) => {
     setSelected((prev) => {
@@ -35,6 +42,27 @@ export function WordListSidebar({
     onWordsChange(words.filter((_, i) => !selected.has(i)));
     setSelected(new Set());
     setSelecting(false);
+  };
+
+  const toggleEnabled = (index: number) => {
+    const updated = [...words];
+    const cur = updated[index];
+    updated[index] = { ...cur, enabled: cur.enabled === false ? true : false };
+    onWordsChange(updated);
+  };
+
+  const updateWord = (index: number, newWord: string): string | null => {
+    const w = newWord.trim().toUpperCase();
+    if (!w) return "Empty";
+    if (!/^[A-Z]+$/.test(w)) return "A–Z only";
+    if (w.length < 3) return "Min 3";
+    if (words.some((e, i) => i !== index && e.word.toUpperCase() === w)) {
+      return "Duplicate";
+    }
+    const updated = [...words];
+    updated[index] = { ...updated[index], word: w };
+    onWordsChange(updated);
+    return null;
   };
 
   const parseBulk = useCallback(() => {
@@ -70,10 +98,10 @@ export function WordListSidebar({
   if (words.length === 0 && !showImport) {
     return (
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-black">Your Words (0)</h3>
+        <h3 className="text-sm font-semibold text-black dark:text-zinc-100">Your Words (0)</h3>
         <button
           onClick={() => setShowImport(true)}
-          className="text-sm text-blue-600 hover:text-blue-800"
+          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
         >
           Bulk import
         </button>
@@ -84,27 +112,40 @@ export function WordListSidebar({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-black">
+        <h3 className="text-sm font-semibold text-black dark:text-zinc-100">
           Your Words ({words.length})
         </h3>
         <div className="flex items-center gap-2">
+          {!selecting && !showImport && words.length > 1 && (
+            <button
+              onClick={() => setSortAlpha(!sortAlpha)}
+              className={`text-xs transition-colors ${
+                sortAlpha
+                  ? "text-blue-600 dark:text-blue-400 font-medium"
+                  : "text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+              }`}
+              title={sortAlpha ? "Showing alphabetical order" : "Showing original order"}
+            >
+              {sortAlpha ? "A→Z ✓" : "A→Z"}
+            </button>
+          )}
           {!selecting && !showImport && words.length > 0 && (
             <>
               <button
                 onClick={() => setShowImport(true)}
-                className="text-xs text-blue-600 hover:text-blue-800"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
               >
                 Import
               </button>
               <button
                 onClick={() => setSelecting(true)}
-                className="text-xs text-gray-700 hover:text-red-600"
+                className="text-xs text-gray-700 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
               >
                 Select
               </button>
               <button
                 onClick={() => onWordsChange([])}
-                className="text-xs text-red-600 hover:text-red-800"
+                className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
               >
                 Clear
               </button>
@@ -117,24 +158,24 @@ export function WordListSidebar({
       {showImport && (
         <div className="flex flex-col gap-2">
           {importError && (
-            <p className="text-xs text-red-600">{importError}</p>
+            <p className="text-xs text-red-600 dark:text-red-400">{importError}</p>
           )}
           <textarea
             value={bulkInput}
             onChange={(e) => setBulkInput(e.target.value)}
             placeholder={"WORD - clue\nWORD - clue"}
-            className="w-full h-28 px-2 py-1.5 border rounded text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full h-28 px-2 py-1.5 border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 rounded text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => { setShowImport(false); setBulkInput(""); setImportError(null); }}
-              className="px-2 py-1 border rounded text-xs hover:bg-gray-100"
+              className="px-2 py-1 border border-gray-300 dark:border-zinc-700 text-black dark:text-zinc-100 rounded text-xs hover:bg-gray-100 dark:hover:bg-zinc-800"
             >
               Cancel
             </button>
             <button
               onClick={parseBulk}
-              className="px-2 py-1 bg-black text-white rounded text-xs hover:bg-gray-800"
+              className="px-2 py-1 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded text-xs hover:bg-gray-800 dark:hover:bg-zinc-300"
             >
               Import
             </button>
@@ -145,16 +186,16 @@ export function WordListSidebar({
       {/* Select toolbar */}
       {selecting && (
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-black font-medium">{selected.size} sel.</span>
+          <span className="text-black dark:text-zinc-100 font-medium">{selected.size} sel.</span>
           <button
             onClick={() => setSelected(new Set(words.map((_, i) => i)))}
-            className="text-blue-600 hover:text-blue-800"
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
           >
             All
           </button>
           <button
             onClick={() => setSelected(new Set())}
-            className="text-blue-600 hover:text-blue-800"
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
           >
             None
           </button>
@@ -168,7 +209,7 @@ export function WordListSidebar({
           </button>
           <button
             onClick={() => { setSelecting(false); setSelected(new Set()); }}
-            className="px-2 py-0.5 border rounded text-xs hover:bg-gray-100"
+            className="px-2 py-0.5 border border-gray-300 dark:border-zinc-700 text-black dark:text-zinc-100 rounded text-xs hover:bg-gray-100 dark:hover:bg-zinc-800"
           >
             Cancel
           </button>
@@ -177,13 +218,13 @@ export function WordListSidebar({
 
       {/* Word list */}
       {words.length > 0 && (
-        <div className="border rounded-lg divide-y max-h-[70vh] overflow-y-auto bg-white">
-          {words.map((entry, i) => (
+        <div className="border border-gray-200 dark:border-zinc-800 rounded-lg divide-y divide-gray-200 dark:divide-zinc-800 max-h-[70vh] overflow-y-auto bg-white dark:bg-zinc-950">
+          {displayedWords.map(({ entry, originalIndex: i }) => (
             selecting ? (
               <div
                 key={`${entry.word}-${i}`}
                 className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer ${
-                  selected.has(i) ? "bg-red-50" : "hover:bg-gray-50"
+                  selected.has(i) ? "bg-red-50 dark:bg-red-950/30" : "hover:bg-gray-50 dark:hover:bg-zinc-900"
                 }`}
                 onClick={() => toggleSelect(i)}
               >
@@ -194,10 +235,10 @@ export function WordListSidebar({
                   className="w-3.5 h-3.5 shrink-0 accent-red-600"
                   onClick={(e) => e.stopPropagation()}
                 />
-                <span className="font-mono font-semibold text-xs text-black shrink-0">
+                <span className="font-mono font-semibold text-xs text-black dark:text-zinc-100 shrink-0">
                   {entry.word}
                 </span>
-                <span className="text-xs text-gray-600 truncate flex-1 min-w-0">
+                <span className="text-xs text-gray-600 dark:text-zinc-400 truncate flex-1 min-w-0">
                   {entry.clue}
                 </span>
               </div>
@@ -205,6 +246,9 @@ export function WordListSidebar({
               <WordRow
                 key={`${entry.word}-${i}`}
                 entry={entry}
+                isEnabled={entry.enabled !== false}
+                onToggleEnabled={() => toggleEnabled(i)}
+                onUpdateWord={(newWord) => updateWord(i, newWord)}
                 onRemove={() => onRemoveWord(entry.word)}
                 onUpdateClue={(clue) => onUpdateClue(entry.word, clue)}
               />
@@ -218,61 +262,122 @@ export function WordListSidebar({
 
 function WordRow({
   entry,
-  onRemove,
+  isEnabled,
+  onToggleEnabled,
+  onUpdateWord,
   onUpdateClue,
+  onRemove,
 }: {
   entry: WordEntry;
-  onRemove: () => void;
+  isEnabled: boolean;
+  onToggleEnabled: () => void;
+  onUpdateWord: (word: string) => string | null;
   onUpdateClue: (clue: string) => void;
+  onRemove: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editingWord, setEditingWord] = useState(false);
+  const [editingClue, setEditingClue] = useState(false);
+  const [wordValue, setWordValue] = useState(entry.word);
   const [clueValue, setClueValue] = useState(entry.clue);
+  const [wordError, setWordError] = useState<string | null>(null);
 
-  const handleSave = () => {
+  const saveWord = () => {
+    const err = onUpdateWord(wordValue);
+    if (err) {
+      setWordError(err);
+    } else {
+      setWordError(null);
+      setEditingWord(false);
+    }
+  };
+
+  const saveClue = () => {
     onUpdateClue(clueValue.trim() || `Clue for ${entry.word}`);
-    setEditing(false);
+    setEditingClue(false);
   };
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 group hover:bg-gray-50">
-      <span className="font-mono font-semibold text-xs text-black shrink-0">
-        {entry.word}
-      </span>
-      {editing ? (
+    <div
+      className={`flex items-center gap-1.5 px-2 py-1.5 group hover:bg-gray-50 dark:hover:bg-zinc-900 ${
+        !isEnabled ? "opacity-50" : ""
+      }`}
+    >
+      <button
+        onClick={onToggleEnabled}
+        className={`shrink-0 w-3.5 h-3.5 rounded border transition-colors ${
+          isEnabled
+            ? "bg-green-500 border-green-500 dark:bg-green-600 dark:border-green-600"
+            : "bg-transparent border-gray-300 dark:border-zinc-600 hover:border-gray-500 dark:hover:border-zinc-400"
+        }`}
+        aria-label={isEnabled ? `Disable ${entry.word}` : `Enable ${entry.word}`}
+        title={isEnabled ? "Click to exclude from generation" : "Click to include in generation"}
+      >
+        {isEnabled && (
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" className="m-auto">
+            <polyline points="3,8 7,12 13,4" />
+          </svg>
+        )}
+      </button>
+
+      {editingWord ? (
+        <div className="flex flex-col gap-0.5 shrink-0">
+          <input
+            type="text"
+            value={wordValue}
+            onChange={(e) => { setWordValue(e.target.value); setWordError(null); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveWord();
+              if (e.key === "Escape") {
+                setWordValue(entry.word);
+                setEditingWord(false);
+                setWordError(null);
+              }
+            }}
+            onBlur={saveWord}
+            autoFocus
+            className="w-20 text-xs px-1 py-0.5 border border-blue-500 rounded bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 font-mono uppercase focus:outline-none"
+          />
+          {wordError && <span className="text-[9px] text-red-600 dark:text-red-400">{wordError}</span>}
+        </div>
+      ) : (
+        <button
+          onClick={() => { setWordValue(entry.word); setEditingWord(true); }}
+          className="font-mono font-semibold text-xs text-black dark:text-zinc-100 hover:text-blue-600 dark:hover:text-blue-400 cursor-text shrink-0 text-left"
+          title="Click to edit"
+        >
+          {entry.word}
+        </button>
+      )}
+
+      {editingClue ? (
         <input
           type="text"
           value={clueValue}
           onChange={(e) => setClueValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleSave();
-            if (e.key === "Escape") { setClueValue(entry.clue); setEditing(false); }
+            if (e.key === "Enter") saveClue();
+            if (e.key === "Escape") { setClueValue(entry.clue); setEditingClue(false); }
           }}
-          onBlur={handleSave}
+          onBlur={saveClue}
           autoFocus
-          className="flex-1 text-xs px-1 py-0.5 border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
+          className="flex-1 text-xs px-1 py-0.5 border border-blue-500 rounded bg-white dark:bg-zinc-950 text-black dark:text-zinc-100 focus:outline-none min-w-0"
         />
       ) : (
-        <span
-          className="text-xs text-gray-600 truncate flex-1 cursor-pointer hover:text-black min-w-0"
-          onClick={() => setEditing(true)}
+        <button
+          onClick={() => { setClueValue(entry.clue); setEditingClue(true); }}
+          className="text-xs text-gray-600 dark:text-zinc-400 truncate flex-1 cursor-text hover:text-black dark:hover:text-zinc-100 min-w-0 text-left"
           title={`${entry.clue} (click to edit)`}
         >
           {entry.clue}
-        </span>
+        </button>
       )}
+
       <button
         onClick={onRemove}
-        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+        className="text-gray-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
         aria-label={`Remove ${entry.word}`}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-        >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5">
           <line x1="4" y1="4" x2="12" y2="12" />
           <line x1="12" y1="4" x2="4" y2="12" />
         </svg>
