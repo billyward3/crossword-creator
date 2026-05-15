@@ -8,6 +8,8 @@ import {
   METRIC_DEFINITIONS,
 } from "@/lib/strategy-info";
 import type { UIStrategy } from "@/lib/strategy-info";
+import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { AdjacencyAwareDemo } from "./components/AdjacencyAwareDemo";
 
 export function generateStaticParams() {
   return Object.keys(STRATEGY_DETAILS).map((id) => ({ id }));
@@ -29,7 +31,7 @@ export default async function StrategyPage({
           <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
           </a>
-          <div className="flex gap-4 text-sm">
+          <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
               className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
@@ -42,6 +44,7 @@ export default async function StrategyPage({
             >
               Create
             </a>
+            <EditorReturnLink />
           </div>
         </div>
       </header>
@@ -92,6 +95,20 @@ export default async function StrategyPage({
             </p>
           ))}
         </section>
+
+        {/* Interactive demo (only adjacency-aware for now) */}
+        {id === "adjacency-aware" && (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-2xl font-bold text-black dark:text-zinc-100">
+              Walk through a placement
+            </h2>
+            <p className="text-sm text-gray-700 dark:text-zinc-400">
+              Step through the algorithm's most distinctive move: fitting
+              two words side-by-side when they share no letters.
+            </p>
+            <AdjacencyAwareDemo />
+          </section>
+        )}
 
         {/* Strengths & Weaknesses */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -517,10 +534,10 @@ function PerformanceComparisonSection({
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-gray-800 dark:text-zinc-300">
-                          {m.twoLetterFrags || "—"}
+                          {m.twoLetterFrags || "n/a"}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-gray-800 dark:text-zinc-300">
-                          {m.fillWords || "—"}
+                          {m.fillWords || "n/a"}
                         </td>
                         <td
                           className={`px-4 py-2.5 text-right font-mono ${

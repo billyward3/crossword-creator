@@ -1,4 +1,6 @@
 import { STRATEGY_DETAILS } from "@/lib/strategy-info";
+import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { BlockBuilderDemo } from "./strategies/[id]/components/BlockBuilderDemo";
 
 export default function AboutPage() {
   return (
@@ -8,12 +10,15 @@ export default function AboutPage() {
           <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
           </a>
-          <a
-            href="/create"
-            className="text-sm text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
-          >
-            Create &rarr;
-          </a>
+          <div className="flex items-center gap-5 text-sm">
+            <a
+              href="/create"
+              className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+            >
+              Create
+            </a>
+            <EditorReturnLink />
+          </div>
         </div>
       </header>
 
@@ -57,6 +62,31 @@ export default function AboutPage() {
               </a>
             ))}
           </div>
+        </section>
+
+        {/* Block Builder */}
+        <section id="block-builder" className="flex flex-col gap-4 scroll-mt-24">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold text-black dark:text-zinc-100">
+              The Block Builder
+            </h2>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+              Work in Progress
+            </span>
+          </div>
+          <p className="text-gray-800 dark:text-zinc-300 leading-relaxed">
+            The Block Builder produces newspaper-style grids with dense black
+            squares and dictionary fill. It runs in three phases: scaffold the
+            user's words via the freeform solver, carve out a structured grid
+            by progressively marking cells black, then fill every remaining
+            slot with a real dictionary word.
+          </p>
+          <p className="text-gray-800 dark:text-zinc-300 leading-relaxed">
+            The walkthrough below shows the distinguishing move:
+            the shrink-and-carve structure phase, where an open canvas is
+            shaped into a proper crossword grid before any fill happens.
+          </p>
+          <BlockBuilderDemo />
         </section>
 
         {/* Guided Builder */}
