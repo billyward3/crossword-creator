@@ -1,4 +1,5 @@
-import type { SlotDescriptor } from "./types";
+import type { GridModel, SlotDescriptor } from "./types";
+import { CELL_BLACK, CELL_EMPTY, cellToLetter } from "./types";
 import { WordIndex } from "./wordindex";
 
 /**
@@ -14,25 +15,69 @@ export interface DomainState {
 }
 
 /**
- * Initialize domains for all slots based on their length.
- * Each slot starts with all words of matching length as candidates.
+ * Initialize domains for all slots based on their length and existing grid state.
+ *
+ * If a `grid` is provided, this honors letters already placed in cells:
+ *   - Slots that are fully filled are pre-assigned (and that word is marked as used).
+ *   - Slots with some letters filled have their domain restricted to words that
+ *     match those letters at the corresponding positions.
+ *
+ * Without a grid, every slot starts with all same-length words as candidates.
  */
 export function initializeDomains(
   slots: SlotDescriptor[],
-  wordIndex: WordIndex
+  wordIndex: WordIndex,
+  grid?: GridModel
 ): DomainState {
   const domains = new Map<number, number[]>();
   const assignments = new Map<number, number | null>();
+  const usedWords = new Set<number>();
 
   for (const slot of slots) {
-    const candidates = wordIndex.getCandidates(slot.length, []);
+    // Inspect the slot's cells for any pre-filled letters
+    const constraints: [number, string][] = [];
+    let filledCount = 0;
+    let filledWord = "";
+    if (grid) {
+      for (let i = 0; i < slot.cellIndices.length; i++) {
+        const v = grid.cells[slot.cellIndices[i]];
+        if (v !== CELL_EMPTY && v !== CELL_BLACK) {
+          const letter = cellToLetter(v);
+          constraints.push([i, letter]);
+          filledWord += letter;
+          filledCount++;
+        } else {
+          filledWord += "?";
+        }
+      }
+    }
+
+    // If the slot is completely filled, treat it as already assigned.
+    if (filledCount === slot.length && filledCount > 0) {
+      const wordIdx = wordIndex.words.indexOf(filledWord);
+      if (wordIdx >= 0) {
+        domains.set(slot.id, [wordIdx]);
+        assignments.set(slot.id, wordIdx);
+        usedWords.add(wordIdx);
+      } else {
+        // Filled letters don't form a known dictionary word.
+        // Use -1 as a "locked" sentinel so the solver skips this slot.
+        // buildResult() recognizes -1 and preserves the cells untouched.
+        domains.set(slot.id, []);
+        assignments.set(slot.id, -1);
+      }
+      continue;
+    }
+
+    // Partial fill: constrain domain to words matching the placed letters
+    const candidates = wordIndex.getCandidates(slot.length, constraints);
     domains.set(slot.id, candidates);
     assignments.set(slot.id, null);
   }
 
   return {
     domains,
-    usedWords: new Set(),
+    usedWords,
     assignments,
   };
 }

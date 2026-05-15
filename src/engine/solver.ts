@@ -17,6 +17,8 @@ export interface SolverConfig {
   onProgress?: (filledSlots: number, totalSlots: number) => void;
   /** Check if solving should be cancelled */
   isCancelled?: () => boolean;
+  /** Word indices to try first (e.g., user's themed words). These are prioritized in value ordering. */
+  preferredWordIndices?: Set<number>;
 }
 
 /**
@@ -45,11 +47,17 @@ export function solve(
   }
 
   // Initialize domains
-  const initialState = initializeDomains(slots, wordIndex);
+  const initialState = initializeDomains(slots, wordIndex, grid);
 
-  // Check if any slot has an empty initial domain
+  // Check if any UNASSIGNED slot has an empty initial domain.
+  // (Locked slots may legitimately have empty domains because they're pre-assigned.)
   for (const [slotId, domain] of initialState.domains) {
-    if (domain.length === 0) return []; // unsolvable
+    if (
+      domain.length === 0 &&
+      initialState.assignments.get(slotId) === null
+    ) {
+      return []; // unsolvable
+    }
   }
 
   // Create seeded RNG for shuffling
@@ -72,6 +80,93 @@ export function solve(
   );
 
   return solutions;
+}
+
+/**
+ * Best-effort fill: greedily places words in empty slots without backtracking.
+ *
+ * Picks the most-constrained slot first (MRV), tries each candidate (preferred
+ * words first), and accepts the first one that doesn't create a dead-end. If
+ * no word fits a slot, that slot is left empty and we move on. The final grid
+ * may have some empty cells but every placement is internally consistent.
+ *
+ * Useful when the user's wordlist + grid combination has no perfect CSP
+ * solution but plenty of partial arrangements are still valuable.
+ */
+export function solveBestEffort(
+  grid: GridModel,
+  wordIndex: WordIndex,
+  config: SolverConfig
+): SolverResult {
+  const slots = extractSlots(grid);
+  const slotMap = new Map<number, SlotDescriptor>();
+  for (const slot of slots) slotMap.set(slot.id, slot);
+
+  let state = initializeDomains(slots, wordIndex, grid);
+  const rng = createRng(config.seed);
+  const startTime = performance.now();
+
+  while (true) {
+    // Find unassigned slots
+    const unassigned = slots.filter(
+      (s) => state.assignments.get(s.id) === null
+    );
+    if (unassigned.length === 0) break;
+
+    // MRV with degree tiebreak
+    unassigned.sort((a, b) => {
+      const da = state.domains.get(a.id)!.length;
+      const db = state.domains.get(b.id)!.length;
+      if (da !== db) return da - db;
+      // Prefer higher-degree slots
+      let degA = 0, degB = 0;
+      for (const i of a.intersections) {
+        if (state.assignments.get(i.otherSlotId) === null) degA++;
+      }
+      for (const i of b.intersections) {
+        if (state.assignments.get(i.otherSlotId) === null) degB++;
+      }
+      return degB - degA;
+    });
+
+    const target = unassigned[0];
+    const domain = state.domains.get(target.id)!;
+
+    if (domain.length === 0) {
+      // No word fits this slot. Mark it as "skipped" so we move on.
+      // -2 sentinel = best-effort skip (different from -1 = locked).
+      state.assignments.set(target.id, -2);
+      continue;
+    }
+
+    // Order candidates: preferred (user) words first, then by LCV-lite
+    const ordered = orderByLCV(
+      domain,
+      target,
+      state,
+      slotMap,
+      wordIndex,
+      rng,
+      config.preferredWordIndices
+    );
+
+    let placed = false;
+    for (const wordIdx of ordered) {
+      const next = assignWord(state, target, wordIdx, slotMap, wordIndex);
+      if (next !== null) {
+        state = next;
+        placed = true;
+        break;
+      }
+    }
+
+    if (!placed) {
+      // Every candidate caused a dead-end further down. Skip this slot.
+      state.assignments.set(target.id, -2);
+    }
+  }
+
+  return buildResult(state, slots, slotMap, wordIndex, grid, startTime);
 }
 
 /**
@@ -114,7 +209,8 @@ function backtrack(
     state,
     slotMap,
     wordIndex,
-    rng
+    rng,
+    config.preferredWordIndices
   );
 
   // Try each candidate
@@ -198,7 +294,7 @@ function countUnassignedIntersections(
  * across all intersecting slots if this word is placed. Prefer words
  * that leave the most options open.
  *
- * The random seed adds diversity — different seeds produce different
+ * The random seed adds diversity: different seeds produce different
  * orderings among equally-constraining words, leading to different solutions.
  */
 function orderByLCV(
@@ -207,7 +303,8 @@ function orderByLCV(
   state: DomainState,
   slotMap: Map<number, SlotDescriptor>,
   wordIndex: WordIndex,
-  rng: () => number
+  rng: () => number,
+  preferredWordIndices?: Set<number>
 ): number[] {
   if (domain.length <= 1) return domain;
 
@@ -216,6 +313,18 @@ function orderByLCV(
   if (domain.length > 100) {
     const shuffled = [...domain];
     shuffleArray(shuffled, rng);
+
+    // Move preferred words to the front so they're tried first
+    if (preferredWordIndices && preferredWordIndices.size > 0) {
+      const preferred: number[] = [];
+      const rest: number[] = [];
+      for (const idx of shuffled) {
+        if (preferredWordIndices.has(idx)) preferred.push(idx);
+        else rest.push(idx);
+      }
+      return [...preferred, ...rest];
+    }
+
     return shuffled;
   }
 
@@ -244,10 +353,11 @@ function orderByLCV(
       totalRemaining += compatible;
     }
 
-    // Add small random noise for diversity
+    // Add small random noise for diversity, plus large boost for preferred words
+    const preferenceBoost = preferredWordIndices?.has(wordIdx) ? 100000 : 0;
     scored.push({
       wordIdx,
-      score: totalRemaining + rng() * 0.5,
+      score: totalRemaining + rng() * 0.5 + preferenceBoost,
     });
   }
 
@@ -266,12 +376,19 @@ function buildResult(
   templateGrid: GridModel,
   startTime: number
 ): SolverResult {
-  // Create a copy of the grid with letters filled in
+  // Create a copy of the grid with letters filled in.
+  // Pre-filled cells are preserved as-is; only solver-assigned slots
+  // overwrite their cells.
   const filledCells = new Uint8Array(templateGrid.cells);
   const assignments = new Map<number, string>();
 
   for (const slot of slots) {
-    const wordIdx = state.assignments.get(slot.id)!;
+    const wordIdx = state.assignments.get(slot.id);
+    // Sentinels:
+    //   -1 = pre-filled by the user but not in the dictionary (locked).
+    //   -2 = best-effort skip (no word fit, leave empty).
+    //   null = strict mode didn't assign (shouldn't happen in a complete solve).
+    if (wordIdx == null || wordIdx === -1 || wordIdx === -2) continue;
     const word = wordIndex.words[wordIdx];
     assignments.set(slot.id, word);
 

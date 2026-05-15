@@ -18,8 +18,8 @@ function createTrieNode(): TrieNode {
  * Pre-computed word index for fast constraint lookups during solving.
  *
  * Two acceleration structures:
- * 1. Tries grouped by word length — for prefix-based pruning
- * 2. CrossIndex — maps "length:position:letter" to sets of matching word indices
+ * 1. Tries grouped by word length, used for prefix-based pruning
+ * 2. CrossIndex, which maps "length:position:letter" to sets of matching word indices
  *    for instant domain intersection during constraint propagation
  */
 export class WordIndex {
@@ -114,7 +114,7 @@ export class WordIndex {
       sets.push(set);
     }
 
-    // Sort by size ascending — intersect smallest first
+    // Sort by size ascending so we intersect the smallest first
     sets.sort((a, b) => a.size - b.size);
 
     // Intersect all sets
@@ -155,7 +155,7 @@ function crossIndexKey(length: number, position: number, letter: string): string
 
 /**
  * Build a WordIndex from raw word entries.
- * This is the main entry point — call once when the user provides their wordlist.
+ * This is the main entry point. Call it once when the user provides their wordlist.
  */
 export function buildWordIndex(entries: WordEntry[]): WordIndex {
   return new WordIndex(entries);

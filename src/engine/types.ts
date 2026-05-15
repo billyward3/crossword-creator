@@ -81,6 +81,8 @@ export type CrossIndex = Map<string, Set<number>>;
 export interface WordEntry {
   word: string;
   clue: string;
+  /** When false, the word is excluded from generation. Defaults to true if absent. */
+  enabled?: boolean;
 }
 
 /** Result from the solver: a complete grid fill */
