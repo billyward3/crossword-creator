@@ -75,7 +75,7 @@ export const TEMPLATES_15X15: GridTemplate[] = [
       "...............",
     ].join("\n"),
     // NOTE: This is a simplified pattern. Real NYT grids have more
-    // nuanced patterns — we'll refine these as we test.
+    // nuanced patterns. We'll refine these as we test.
   },
   {
     name: "Staircase",

@@ -203,7 +203,7 @@ function analyzeGaps(grid: GridModel): GridGap[] {
             type: "short_run",
             row: r,
             col: c,
-            description: `${acrossRun}-letter across run at (${r + 1},${c + 1}) — minimum is 3`,
+            description: `${acrossRun}-letter across run at (${r + 1},${c + 1}), but the minimum is 3`,
           });
         }
       }
@@ -213,7 +213,7 @@ function analyzeGaps(grid: GridModel): GridGap[] {
             type: "short_run",
             row: r,
             col: c,
-            description: `${downRun}-letter down run at (${r + 1},${c + 1}) — minimum is 3`,
+            description: `${downRun}-letter down run at (${r + 1},${c + 1}), but the minimum is 3`,
           });
         }
       }

@@ -41,7 +41,7 @@ export async function loadDictionary(): Promise<DictionaryEntry[]> {
 /**
  * Convert dictionary entries to WordEntry format for use with the solver.
  * Filters by length range and minimum score.
- * Clues are left blank — the user fills these in or they're marked as dictionary fill.
+ * Clues are left blank because the user fills these in or they're marked as dictionary fill.
  */
 export function dictionaryToWordEntries(
   dictionary: DictionaryEntry[],
@@ -68,13 +68,13 @@ export function dictionaryToWordEntries(
 
   return filtered.map((e) => ({
     word: e.word,
-    clue: "", // dictionary words don't have clues — user fills these in
+    clue: "", // dictionary words don't have clues; the user fills these in
   }));
 }
 
 /**
  * Merge user's themed words with dictionary words.
- * User words take priority — dictionary words are only used for fill.
+ * User words take priority, and dictionary words are only used for fill.
  * Returns the merged list with user words first.
  */
 export function mergeWithDictionary(
