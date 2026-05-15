@@ -20,7 +20,7 @@ interface GapVisualizationProps {
  * - Green: flexible (many candidates)
  * - Yellow: constrained (few candidates)
  * - Orange: forced (only 1 candidate)
- * - Red: impossible (no candidates — needs a new word)
+ * - Red: impossible (no candidates, needs a new word)
  * - White: not part of any slot / black
  */
 export function GapVisualization({

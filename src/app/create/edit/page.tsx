@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import type { WordEntry } from "@/engine/types";
+import type { Puzzle } from "@/lib/puzzle/types";
+import { markPuzzleAsMine } from "@/lib/puzzle/my-puzzles";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
 const STORAGE_KEY_WORDS = "crossword-creator-words";
@@ -24,6 +27,7 @@ interface EditorState {
   clues: Record<string, string>;
   userWords: string[];
   fillWords: string[];
+  title?: string;
 }
 
 function createEmptyGrid(rows: number, cols: number): CellValue[][] {
@@ -76,6 +80,62 @@ function padGrid(grid: CellValue[][]): {
   }
 
   return { grid: newGrid, rowOffset: topPad, colOffset: leftPad };
+}
+
+/**
+ * Trim the editor grid to its letter-content bounds, convert any
+ * remaining empty cells (gutter or freeform negative space) into black
+ * squares, and remap clue keys to the new coordinate space.
+ *
+ * The solver only renders cells as either "letter" or "black" — leftover
+ * "" workspace cells would otherwise show as open solvable tiles outside
+ * the actual puzzle.
+ */
+function preparePuzzleForShare(
+  grid: CellValue[][],
+  clues: Record<string, string>
+): { grid: CellValue[][]; clues: Record<string, string> } {
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+  let minR = rows;
+  let maxR = -1;
+  let minC = cols;
+  let maxC = -1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = grid[r][c];
+      // A letter cell (anything that isn't "" or "#") defines the bounds.
+      if (v && v !== "#") {
+        if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
+        if (c < minC) minC = c;
+        if (c > maxC) maxC = c;
+      }
+    }
+  }
+  if (maxR === -1) return { grid: [], clues: {} };
+
+  const trimmed: CellValue[][] = [];
+  for (let r = minR; r <= maxR; r++) {
+    const row: CellValue[] = [];
+    for (let c = minC; c <= maxC; c++) {
+      const v = grid[r][c];
+      row.push(v === "" ? "#" : v);
+    }
+    trimmed.push(row);
+  }
+
+  const remapped: Record<string, string> = {};
+  for (const [key, clue] of Object.entries(clues)) {
+    const [rStr, cStr, dir] = key.split(",");
+    const r = Number(rStr) - minR;
+    const c = Number(cStr) - minC;
+    if (r >= 0 && r < trimmed.length && c >= 0 && c < trimmed[0].length) {
+      remapped[`${r},${c},${dir}`] = clue;
+    }
+  }
+
+  return { grid: trimmed, clues: remapped };
 }
 
 function detectWords(grid: CellValue[][]): { word: string; row: number; col: number; direction: "across" | "down" }[] {
@@ -133,12 +193,16 @@ export default function EditPage() {
   const [clues, setClues] = useState<Record<string, string>>({});
   const [userWords, setUserWords] = useState<string[]>([]);
   const [fillWords, setFillWords] = useState<string[]>([]);
+  const [title, setTitle] = useState("");
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [direction, setDirection] = useState<"across" | "down">("across");
   const [tool, setTool] = useState<"letter" | "black">("letter");
   const [hydrated, setHydrated] = useState(false);
   const [history, setHistory] = useState<CellValue[][][]>([]);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -146,11 +210,28 @@ export default function EditPage() {
       const stored = localStorage.getItem(STORAGE_KEY_EDITOR);
       if (stored) {
         const state: EditorState = JSON.parse(stored);
-        const { grid: padded } = padGrid(state.grid);
+        const { grid: padded, rowOffset, colOffset } = padGrid(state.grid);
         setGrid(padded);
-        setClues(state.clues);
+        // padGrid shifts every cell by (rowOffset, colOffset). Clue keys
+        // are "row,col,direction" and reference the *current* grid
+        // coordinates, so shift them in lockstep — otherwise the editor
+        // looks up clues at stale positions and shows "Add clue" for
+        // words that came in with clues attached.
+        if (rowOffset !== 0 || colOffset !== 0) {
+          const shifted: Record<string, string> = {};
+          for (const [key, clue] of Object.entries(state.clues)) {
+            const [rStr, cStr, dir] = key.split(",");
+            const r = Number(rStr) + rowOffset;
+            const c = Number(cStr) + colOffset;
+            shifted[`${r},${c},${dir}`] = clue;
+          }
+          setClues(shifted);
+        } else {
+          setClues(state.clues);
+        }
         setUserWords(state.userWords);
         setFillWords(state.fillWords ?? []);
+        setTitle(state.title ?? "");
       }
     } catch {}
     setHydrated(true);
@@ -159,11 +240,11 @@ export default function EditPage() {
   // Save state to localStorage on changes
   useEffect(() => {
     if (!hydrated) return;
-    const state: EditorState = { grid, clues, userWords, fillWords };
+    const state: EditorState = { grid, clues, userWords, fillWords, title };
     try {
       localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(state));
     } catch {}
-  }, [grid, clues, userWords, fillWords, hydrated]);
+  }, [grid, clues, userWords, fillWords, title, hydrated]);
 
   // Ensure grid always has gutter padding around content
   const ensurePadding = useCallback((g: CellValue[][]): CellValue[][] => {
@@ -331,6 +412,51 @@ export default function EditPage() {
     setClues((prev) => ({ ...prev, [key]: clue }));
   }, []);
 
+  /**
+   * Upload the current puzzle to the backend and navigate to the share
+   * page. Before uploading, trims the grid to its letter-content bounds
+   * and converts any remaining empty workspace cells to black squares —
+   * the solver only understands "letter" or "black", so leftover "" cells
+   * (from editor gutter padding and freeform negative space) would
+   * otherwise render as open solvable tiles outside the actual puzzle.
+   */
+  const handleShare = useCallback(async () => {
+    setShareError(null);
+    setSharing(true);
+    try {
+      const prepared = preparePuzzleForShare(grid, clues);
+      if (prepared.grid.length === 0) {
+        throw new Error("Add at least one word before sharing");
+      }
+      const puzzle: Puzzle = {
+        version: 1,
+        grid: prepared.grid,
+        clues: prepared.clues,
+        userWords,
+        fillWords,
+        title: title.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+      const res = await fetch("/api/puzzles", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(puzzle),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Upload failed (${res.status})`);
+      }
+      const { id } = (await res.json()) as { id: string };
+      // Remember this puzzle is "ours" so the solver page can show
+      // creator-only affordances (back-to-share link, etc.)
+      markPuzzleAsMine(id);
+      router.push(`/create/share/${id}`);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Failed to share");
+      setSharing(false);
+    }
+  }, [grid, clues, userWords, fillWords, title, router]);
+
   // Track which cells belong to fill words vs user words
   const fillCells = new Set<string>();
   const userCells = new Set<string>();
@@ -384,28 +510,58 @@ export default function EditPage() {
   const showMinC = Math.max(0, (visMaxC === -1 ? 0 : visMinC) - GUTTER);
   const showMaxC = Math.min(cols - 1, (visMaxC === -1 ? cols - 1 : visMaxC) + GUTTER);
 
-  const cellSize = (showMaxC - showMinC + 1) <= 15 ? 38 : 28;
+  // Cell size tiered by visible column count so wider grids stay onscreen
+  // without horizontal scrolling on typical desktop displays.
+  const visibleCols = showMaxC - showMinC + 1;
+  const cellSize =
+    visibleCols <= 10
+      ? 44
+      : visibleCols <= 15
+        ? 38
+        : visibleCols <= 22
+          ? 32
+          : visibleCols <= 30
+            ? 28
+            : visibleCols <= 40
+              ? 24
+              : 20;
 
   return (
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between pr-12">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between pr-12">
           <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
           </a>
-          <div className="flex gap-4 text-sm">
-            <a href="/create" className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100">
+          <div className="flex items-center gap-5 text-sm">
+            <a
+              href="/about"
+              className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+            >
+              About
+            </a>
+            <a
+              href="/create"
+              className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+            >
               &larr; Back to layouts
             </a>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col lg:flex-row gap-8">
+      <div className="max-w-screen-2xl mx-auto px-6 py-8 flex flex-col lg:flex-row gap-8">
         {/* Grid + toolbar */}
         <div className="flex-1 min-w-0 flex flex-col gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-black dark:text-zinc-100 mb-1">Edit Puzzle</h1>
+          <div className="flex flex-col gap-3">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Untitled puzzle"
+              maxLength={100}
+              className="text-2xl font-bold bg-transparent text-black dark:text-zinc-100 border-b-2 border-gray-200 dark:border-zinc-800 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-colors pb-1 placeholder:text-gray-400 dark:placeholder:text-zinc-600"
+            />
             <p className="text-sm text-gray-700 dark:text-zinc-400">
               Click any cell to select it, then type to fill. Arrow keys navigate. Space toggles direction. Click beyond the grid to expand it.
             </p>
@@ -444,15 +600,29 @@ export default function EditPage() {
               Undo
             </button>
 
-            <span className="text-xs text-gray-600 dark:text-zinc-500 ml-auto">
+            <span className="text-xs text-gray-600 dark:text-zinc-500">
               {direction === "across" ? "Across" : "Down"} {selectedCell ? `(${selectedCell.row + 1}, ${selectedCell.col + 1})` : ""}
             </span>
+
+            <button
+              onClick={handleShare}
+              disabled={sharing || detectedWithMeta.length === 0}
+              className="ml-auto px-4 py-1.5 text-xs font-semibold bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {sharing ? "Sharing…" : "Share puzzle →"}
+            </button>
           </div>
+
+          {shareError && (
+            <div className="p-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
+              {shareError}
+            </div>
+          )}
 
           {/* Grid */}
           <div
             ref={gridRef}
-            className="overflow-auto border border-gray-200 dark:border-zinc-800 rounded-lg p-2 bg-gray-50 dark:bg-zinc-900/50"
+            className="w-fit max-w-full overflow-auto border border-gray-200 dark:border-zinc-800 rounded-lg p-2 bg-gray-50 dark:bg-zinc-900/50"
             onClick={(e) => {
               // Deselect if clicking the background
               if (e.target === e.currentTarget || e.target === gridRef.current) {
@@ -486,24 +656,27 @@ export default function EditPage() {
                     (c < cols - 1 && grid[r]?.[c + 1] !== "" && grid[r]?.[c + 1] !== undefined);
                   const isGutter = isEmpty && !hasContentNeighbor;
 
+                  // Keep solid contrast in dark mode: black squares stay
+                  // pure black; letter/empty squares stay light so the
+                  // crossword shape remains legible against the dark page.
                   let bgClass: string;
                   if (isBlack) {
-                    bgClass = "bg-black dark:bg-zinc-800 border-gray-800 dark:border-zinc-700";
+                    bgClass = "bg-black border-gray-700 dark:border-zinc-700";
                   } else if (isSelected) {
-                    bgClass = "bg-blue-100 dark:bg-blue-800/60 border-blue-500 dark:border-blue-400 z-10";
+                    bgClass = "bg-blue-200 dark:bg-blue-500 border-blue-500 dark:border-blue-300 z-10";
                   } else if (isInWord) {
-                    bgClass = "bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800";
+                    bgClass = "bg-blue-100 dark:bg-blue-300 border-blue-300 dark:border-blue-400";
                   } else if (isLetter) {
-                    bgClass = "bg-amber-50 dark:bg-zinc-800 border-gray-300 dark:border-zinc-600";
+                    bgClass = "bg-amber-50 dark:bg-amber-100 border-gray-300 dark:border-amber-300";
                   } else if (isGutter) {
-                    bgClass = "bg-gray-50 dark:bg-zinc-950 border-gray-100 dark:border-zinc-900 opacity-40";
+                    bgClass = "bg-gray-50 dark:bg-zinc-900 border-gray-100 dark:border-zinc-800 opacity-50";
                   } else {
-                    bgClass = "bg-white dark:bg-zinc-950 border-gray-200 dark:border-zinc-800";
+                    bgClass = "bg-white dark:bg-zinc-200 border-gray-300 dark:border-zinc-400";
                   }
 
                   const textClass = isFillCell
-                    ? "text-gray-400 dark:text-zinc-500"
-                    : "text-black dark:text-zinc-100";
+                    ? "text-gray-500 dark:text-gray-600"
+                    : "text-black";
 
                   return (
                     <button

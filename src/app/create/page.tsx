@@ -8,15 +8,19 @@ import {
   type FreeformStrategy,
   FREEFORM_STRATEGIES,
 } from "@/engine/freeform";
+import { buildBlock, blockResultToFreeform } from "@/engine/block-builder";
 import { STRATEGY_DETAILS } from "@/lib/strategy-info";
 import {
   loadDictionary,
   dictionaryToWordEntries,
 } from "@/engine/dictionary";
+
+type GenerationMode = FreeformStrategy | "block-builder";
 import { useRouter } from "next/navigation";
 import { WordlistInput } from "./components/WordlistInput";
 import { WordListSidebar } from "./components/WordListSidebar";
 import { FreeformPreview } from "./components/FreeformPreview";
+import { EditorReturnLink } from "@/components/EditorReturnLink";
 
 type CreatorStep = "input" | "generating" | "results";
 
@@ -35,7 +39,7 @@ export default function CreatePage() {
   const [words, setWords] = useState<WordEntry[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<CreatorStep>("input");
-  const [strategy, setStrategy] = useState<FreeformStrategy>("graph-guided");
+  const [strategy, setStrategy] = useState<GenerationMode>("graph-guided");
   const [freeformResults, setFreeformResults] = useState<FreeformResult[]>([]);
   const [selectedFreeform, setSelectedFreeform] = useState<number | null>(null);
   const [maxWords, setMaxWords] = useState<number | null>(null); // null = no limit
@@ -93,8 +97,9 @@ export default function CreatePage() {
   }, []);
 
   const dictionaryReady = dictionaryWords.length > 0;
-  const adjacencyNeedsDict =
-    strategy.startsWith("adjacency") && !dictionaryReady;
+  const needsDict =
+    (strategy.startsWith("adjacency") || strategy === "block-builder") &&
+    !dictionaryReady;
 
   // Words actually used by the solver: enabled-only, capped to maxWords
   const eligibleWords = words.filter((w) => w.enabled !== false);
@@ -104,12 +109,38 @@ export default function CreatePage() {
   // full word list and chooses the best subset of `cap` words, instead of us
   // pre-slicing and locking it into a fixed prefix.
   const runFreeformWith = useCallback(
-    (s: FreeformStrategy, cap: number | null) => {
+    (s: GenerationMode, cap: number | null) => {
       const enabled = words.filter((w) => w.enabled !== false);
+
+      if (s === "block-builder") {
+        const maxPlaced =
+          cap !== null && cap < enabled.length ? cap : undefined;
+        // Filter dictionary to crossword-friendly lengths (3-7) to avoid
+        // compound junk like LIGHTRED. The general dictionary is already
+        // filtered to score >= 60, but we drop the longer entries that
+        // tend to be brand names and compounds.
+        const blockDict = dictionaryWords.filter(
+          (e) => e.word.length >= 3 && e.word.length <= 7
+        );
+        const result = buildBlock({
+          entries: enabled,
+          dictionary: blockDict,
+          scaffoldStrategy: "adjacency-aware",
+          padding: 1,
+          maxPlaced,
+        });
+        if (result) {
+          const converted = blockResultToFreeform(result, enabled);
+          setFreeformResults([converted]);
+          setSelectedFreeform(0);
+        } else {
+          setFreeformResults([]);
+          setSelectedFreeform(null);
+        }
+        return;
+      }
+
       const maxPlaced = cap !== null && cap < enabled.length ? cap : undefined;
-      // Adjacency-aware verifies every perpendicular run against a real word
-      // set. We pass the dictionary as `extraValidWords` so that placements
-      // can form dictionary words perpendicular to user words.
       const extraValid =
         s.startsWith("adjacency") ? dictionaryWords : undefined;
       const results = solveFreeformMultiple(
@@ -127,7 +158,7 @@ export default function CreatePage() {
   );
 
   const runFreeform = useCallback(
-    (s: FreeformStrategy) => runFreeformWith(s, maxWords),
+    (s: GenerationMode) => runFreeformWith(s, maxWords),
     [runFreeformWith, maxWords]
   );
 
@@ -143,7 +174,7 @@ export default function CreatePage() {
       return;
     }
     if (
-      strategy.startsWith("adjacency") &&
+      (strategy.startsWith("adjacency") || strategy === "block-builder") &&
       step === "results" &&
       !hasRerunForDictRef.current
     ) {
@@ -176,7 +207,7 @@ export default function CreatePage() {
   }, [eligibleWords.length, strategy, runFreeform]);
 
   const handleStrategyChange = useCallback(
-    (newStrategy: FreeformStrategy) => {
+    (newStrategy: GenerationMode) => {
       setStrategy(newStrategy);
       if (step === "results") {
         runFreeform(newStrategy);
@@ -254,14 +285,23 @@ export default function CreatePage() {
           <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
           </a>
-          {step !== "input" && (
-            <button
-              onClick={handleBack}
-              className="text-sm text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+          <div className="flex items-center gap-5 text-sm">
+            <a
+              href="/about"
+              className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
             >
-              &larr; Back to editor
-            </button>
-          )}
+              About
+            </a>
+            <EditorReturnLink />
+            {step !== "input" && (
+              <button
+                onClick={handleBack}
+                className="text-gray-700 dark:text-zinc-400 hover:text-black dark:hover:text-zinc-100"
+              >
+                &larr; Back to editor
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -287,14 +327,14 @@ export default function CreatePage() {
             <div className="flex gap-4 flex-wrap items-center">
               <button
                 onClick={handleGenerate}
-                disabled={eligibleWords.length < 2 || adjacencyNeedsDict}
+                disabled={eligibleWords.length < 2 || needsDict}
                 className="px-8 py-3 bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl font-medium hover:bg-gray-800 dark:hover:bg-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Generate Puzzle
               </button>
-              {adjacencyNeedsDict && (
+              {needsDict && (
                 <span className="text-sm text-gray-700 dark:text-zinc-400">
-                  Loading dictionary for Adjacency-Aware…
+                  Loading dictionary…
                 </span>
               )}
               <a
@@ -512,8 +552,8 @@ function StrategySelector({
   strategy,
   onChange,
 }: {
-  strategy: FreeformStrategy;
-  onChange: (s: FreeformStrategy) => void;
+  strategy: GenerationMode;
+  onChange: (s: GenerationMode) => void;
 }) {
   const userListStrategies = FREEFORM_STRATEGIES.filter(
     (s) => !s.id.startsWith("adjacency"),
@@ -522,7 +562,7 @@ function StrategySelector({
     (s) => s.id.startsWith("adjacency"),
   );
 
-  const buttonClass = (id: FreeformStrategy) =>
+  const buttonClass = (id: GenerationMode) =>
     `px-4 py-2 rounded-xl text-sm font-medium transition-all ${
       strategy === id
         ? "bg-black dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-md"
@@ -565,10 +605,64 @@ function StrategySelector({
             </button>
           ))}
         </div>
-        <p className="text-xs text-gray-600 dark:text-zinc-500 mt-1.5">
-          {adjacencyStrategies.find((s) => s.id === strategy)?.description ??
-            "Places your words with parallel adjacencies, then fills gaps with real dictionary words."}
+      </div>
+
+      {/* Block builder (newspaper-style) */}
+      <div>
+        <p className="text-xs font-semibold text-gray-700 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
+          Newspaper-style
         </p>
+        <div className="flex gap-2 flex-wrap items-center">
+          <button
+            onClick={() => onChange("block-builder")}
+            className={buttonClass("block-builder")}
+          >
+            Block Builder
+          </button>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+            Work in Progress
+          </span>
+        </div>
+        {strategy === "block-builder" && (
+          <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex flex-col gap-2 text-xs text-gray-800 dark:text-zinc-300">
+            <p>
+              <span className="font-semibold text-black dark:text-zinc-100">
+                Proof of concept.
+              </span>{" "}
+              Builds a dense newspaper-style grid with black squares and
+              dictionary fill. Your words are scaffolded first, then the grid
+              is carved into blocks and the empty slots are filled.
+            </p>
+            <p className="font-semibold text-black dark:text-zinc-100 mt-1">
+              Known challenges:
+            </p>
+            <ul className="list-disc list-inside flex flex-col gap-1">
+              <li>
+                <span className="font-semibold">Fill quality:</span> the
+                dictionary contains compound words and obscure entries
+                (LIGHTRED, ERSATZ). Higher-quality fills require a curated
+                word list.
+              </li>
+              <li>
+                <span className="font-semibold">Solver completeness:</span>{" "}
+                full backtracking can't always find a complete solution on
+                dense grids. The best-effort fallback may leave a handful of
+                non-dictionary letter sequences.
+              </li>
+              <li>
+                <span className="font-semibold">Stray cells:</span> a user
+                word placed near the grid edge may end up with one direction
+                only 1 letter long. The scaffold doesn't yet score for edge
+                spacing.
+              </li>
+              <li>
+                <span className="font-semibold">Cap behavior:</span> the
+                word cap limits scaffold placements; total puzzle words
+                (user + dictionary fill) is typically 3-5× that number.
+              </li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -576,7 +670,8 @@ function StrategySelector({
 
 /* ─── Strategy Detail Card ─── */
 
-function StrategyDetailCard({ strategy }: { strategy: FreeformStrategy }) {
+function StrategyDetailCard({ strategy }: { strategy: GenerationMode }) {
+  if (strategy === "block-builder") return null;
   const details = STRATEGY_DETAILS[strategy as import("@/lib/strategy-info").UIStrategy];
   if (!details) return null;
 
