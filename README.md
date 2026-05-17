@@ -4,7 +4,7 @@ A web-based crossword creator that builds packed, real-style puzzles around **yo
 
 **Live site:** [TODO: add URL after deployment]
 
-<video src="https://github.com/user-attachments/assets/d2caf608-8895-4b88-9d0b-2823dc10ee43" autoplay loop muted playsinline width="100%"></video>
+<img src="docs/media/hero.gif" alt="Building a freeform puzzle with the adjacency-aware strategy" width="100%" />
 
 > _Building a freeform puzzle with the adjacency-aware strategy. For an interactive walkthrough of the engine internals (including step-throughable demos of each generation strategy), see the **How It Works** page on the live site._
 
