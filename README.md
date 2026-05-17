@@ -23,13 +23,11 @@ Finished puzzles can be saved (Redis-backed storage), shared via short URL, and 
 
 ## A peek at the About page
 
-<table>
-  <tr>
-    <td><img src="docs/media/about-aa-1.png" alt="Adjacency-aware demo step 1" /></td>
-    <td><img src="docs/media/about-aa-2.png" alt="Adjacency-aware demo step 2" /></td>
-    <td><img src="docs/media/about-aa-3.png" alt="Adjacency-aware demo step 3" /></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/media/about-aa-1.png" alt="Adjacency-aware demo step 1" width="32.8%" />
+  <img src="docs/media/about-aa-2.png" alt="Adjacency-aware demo step 2" width="32.8%" />
+  <img src="docs/media/about-aa-3.png" alt="Adjacency-aware demo step 3" width="32.8%" />
+</p>
 
 ## Architecture
 
