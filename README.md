@@ -2,7 +2,7 @@
 
 A web-based crossword creator that builds packed, real-style puzzles around **your own word list**. Most existing crossword tools either fill grids from a generic dictionary, or hand you a blank grid and ask you to place words by hand. This one takes the words you actually care about (a theme, a vocabulary set, names of friends, anything) and generates a crossword around them, with dense intersections and a NYT-style solver UI. Finished puzzles can be shared via short URL.
 
-**Live site:** [TODO: add URL after deployment]
+**Live site:** [crossword.williamward.dev](https://crossword.williamward.dev/)
 
 <img src="docs/media/hero.gif" alt="Building a freeform puzzle with the adjacency-aware strategy" width="100%" />
 
