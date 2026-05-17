@@ -534,10 +534,10 @@ function PerformanceComparisonSection({
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-gray-800 dark:text-zinc-300">
-                          {m.twoLetterFrags || "n/a"}
+                          {m.twoLetterFrags}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono text-gray-800 dark:text-zinc-300">
-                          {m.fillWords || "n/a"}
+                          {m.fillWords}
                         </td>
                         <td
                           className={`px-4 py-2.5 text-right font-mono ${
