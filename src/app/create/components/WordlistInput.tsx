@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { WordEntry } from "@/engine/types";
+import { COASTAL_EXAMPLE } from "@/lib/example-wordlist";
 
 interface WordlistInputProps {
   words: WordEntry[];
@@ -52,6 +53,18 @@ export function WordlistInput({ words, onWordsChange }: WordlistInputProps) {
     setNewClue("");
     setError(null);
   }, [newWord, newClue, words, onWordsChange]);
+
+  const loadExample = useCallback(() => {
+    if (words.length > 0) {
+      const ok = window.confirm(
+        "Replace the current word list with the coastal example list (25 words)?"
+      );
+      if (!ok) return;
+    }
+    onWordsChange([...COASTAL_EXAMPLE]);
+    setError(null);
+    setShowBulk(false);
+  }, [words.length, onWordsChange]);
 
   const parseBulk = useCallback(() => {
     const lines = bulkInput
@@ -210,6 +223,12 @@ export function WordlistInput({ words, onWordsChange }: WordlistInputProps) {
             className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
           >
             {showBulk ? "Single entry" : "Bulk import"}
+          </button>
+          <button
+            onClick={loadExample}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+          >
+            Use example list
           </button>
         </div>
       </div>
