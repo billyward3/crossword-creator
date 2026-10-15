@@ -120,7 +120,7 @@ export default function GuidedBuilderPage() {
       const slot = findSlotAtCell(row, col, direction);
       setSelectedSlot(slot);
     },
-    [tool, grid, selectedCell, direction, findSlotAtCell]
+    [tool, grid, symmetric, selectedCell, direction, findSlotAtCell]
   );
 
   // Handle placing a word in the selected slot
