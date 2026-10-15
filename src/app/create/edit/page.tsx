@@ -1,13 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { WordEntry } from "@/engine/types";
 import type { Puzzle } from "@/lib/puzzle/types";
 import { markPuzzleAsMine } from "@/lib/puzzle/my-puzzles";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
-const STORAGE_KEY_WORDS = "crossword-creator-words";
 const GUTTER = 2;
 
 type CellValue = string; // single uppercase letter, "#" for black, "" for empty
@@ -530,9 +529,9 @@ export default function EditPage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
@@ -725,8 +724,6 @@ export default function EditPage() {
                   detected={w}
                   onClueChange={(clue) => updateClue(wordKey(w), clue)}
                   onSelect={() => {
-                    const dr = w.direction === "down" ? 1 : 0;
-                    const dc = w.direction === "across" ? 1 : 0;
                     setSelectedCell({ row: w.row, col: w.col });
                     setDirection(w.direction);
                   }}

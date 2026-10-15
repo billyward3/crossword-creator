@@ -128,7 +128,6 @@ export function assignWord(
 
     const requiredLetter = word[intersection.positionInSlot];
     const otherPos = intersection.positionInOtherSlot;
-    const otherSlot = allSlots.get(otherSlotId)!;
 
     // Filter the other slot's domain
     const oldDomain = newDomains.get(otherSlotId)!;
@@ -155,7 +154,6 @@ export function assignWord(
       if (neighborId === slot.id) continue; // skip the slot we just assigned
       if (newAssignments.get(neighborId) !== null) continue;
 
-      const neighborSlot = allSlots.get(neighborId)!;
       const dirtyDomain = newDomains.get(dirtySlotId)!;
       const neighborDomain = newDomains.get(neighborId)!;
 

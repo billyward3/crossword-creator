@@ -359,7 +359,7 @@ export function WordlistInput({ words, onWordsChange }: WordlistInputProps) {
 
       {words.length === 0 && (
         <p className="text-sm text-gray-700 dark:text-zinc-400 text-center py-8">
-          Add words to get started. You'll need enough words to fill the grid.
+          Add words to get started. You&apos;ll need enough words to fill the grid.
         </p>
       )}
     </div>

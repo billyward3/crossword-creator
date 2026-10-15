@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useClientValue } from "@/lib/use-client-value";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
+
+function hasSavedEditorState(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY_EDITOR) !== null;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Renders a "Resume editing" link only when there's a saved puzzle in
@@ -11,14 +19,7 @@ const STORAGE_KEY_EDITOR = "crossword-editor-state";
  * is always current.
  */
 export function EditorReturnLink() {
-  const [hasSaved, setHasSaved] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_EDITOR);
-      if (stored) setHasSaved(true);
-    } catch {}
-  }, []);
+  const hasSaved = useClientValue(hasSavedEditorState, false);
 
   if (!hasSaved) return null;
 

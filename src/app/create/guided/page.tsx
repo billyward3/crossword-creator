@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { WordEntry } from "@/engine/types";
 import type { SlotDescriptor } from "@/engine/types";
@@ -13,7 +14,7 @@ import {
   cellIndex,
   isBlack,
 } from "@/engine/grid";
-import { buildWordIndex, WordIndex } from "@/engine/wordindex";
+import { buildWordIndex } from "@/engine/wordindex";
 import { solve, solveBestEffort } from "@/engine/solver";
 import {
   loadDictionary,
@@ -81,7 +82,6 @@ export default function GuidedBuilderPage() {
 
   // Extract slots whenever grid changes
   const slots = extractSlots(grid);
-  const slotMap = new Map(slots.map((s) => [s.id, s]));
 
   // Build word index from user words + dictionary
   const { entries: mergedEntries, userWordSet } = mergeWithDictionary(
@@ -441,7 +441,7 @@ export default function GuidedBuilderPage() {
               "Couldn't find a perfect fill, so a best-effort fill was used instead. Some slots may be empty."
             );
           }
-        } catch (e) {
+        } catch {
           setError("Auto-fill failed. Try a different grid layout.");
         }
         setAutoFilling(false);
@@ -558,9 +558,9 @@ export default function GuidedBuilderPage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
