@@ -1,6 +1,6 @@
 import type { GridModel, SlotDescriptor, SolverResult } from "./types";
 import { letterToCell } from "./types";
-import { cellIndex, extractSlots } from "./grid";
+import { extractSlots } from "./grid";
 import { WordIndex } from "./wordindex";
 import {
   type DomainState,
@@ -199,7 +199,7 @@ function backtrack(
   config.onProgress?.(slots.length - unassigned.length, slots.length);
 
   // MRV: pick the unassigned slot with the smallest domain
-  const selectedSlot = selectSlot(unassigned, state, slotMap);
+  const selectedSlot = selectSlot(unassigned, state);
 
   // Get candidates ordered by LCV (least constraining value)
   const domain = state.domains.get(selectedSlot.id)!;
@@ -248,8 +248,7 @@ function backtrack(
  */
 function selectSlot(
   unassigned: SlotDescriptor[],
-  state: DomainState,
-  slotMap: Map<number, SlotDescriptor>
+  state: DomainState
 ): SlotDescriptor {
   let best = unassigned[0];
   let bestDomainSize = state.domains.get(best.id)!.length;

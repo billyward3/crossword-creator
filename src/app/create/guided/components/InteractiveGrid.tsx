@@ -19,7 +19,6 @@ export function InteractiveGrid({
   grid,
   selectedCell,
   selectedSlot,
-  direction,
   cellSize,
   onCellClick,
 }: InteractiveGridProps) {

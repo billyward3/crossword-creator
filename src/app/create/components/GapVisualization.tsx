@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { GridModel, SlotFeasibility } from "@/engine/types";
-import { CELL_BLACK, CELL_EMPTY } from "@/engine/types";
+import { CELL_BLACK } from "@/engine/types";
 import { cellIndex, extractSlots } from "@/engine/grid";
 import { computeClueNumbers } from "@/lib/numbering";
 

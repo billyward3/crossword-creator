@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { STRATEGY_DETAILS } from "@/lib/strategy-info";
 import { EditorReturnLink } from "@/components/EditorReturnLink";
 import { BlockBuilderDemo } from "./strategies/[id]/components/BlockBuilderDemo";
@@ -7,9 +8,9 @@ export default function AboutPage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/create"
@@ -77,7 +78,7 @@ export default function AboutPage() {
           <p className="text-gray-800 dark:text-zinc-300 leading-relaxed">
             The Block Builder produces newspaper-style grids with dense black
             squares and dictionary fill. It runs in three phases: scaffold the
-            user's words via the freeform solver, carve out a structured grid
+            user&apos;s words via the freeform solver, carve out a structured grid
             by progressively marking cells black, then fill every remaining
             slot with a real dictionary word.
           </p>
@@ -98,7 +99,7 @@ export default function AboutPage() {
             Freeform mode builds the grid <em>around</em> your words. The Guided
             Builder works the opposite way: you start with a fixed grid pattern
             (5×5, 7×7, or 15×15), and the engine helps you place words slot by
-            slot. It's the right tool when you want a traditional NYT-style
+            slot. It&apos;s the right tool when you want a traditional NYT-style
             crossword shape.
           </p>
 
@@ -108,7 +109,7 @@ export default function AboutPage() {
                 Two-Layer Word Source
               </h3>
               <p className="text-sm text-gray-700 dark:text-zinc-400">
-                Your themed words are prioritized because they're the answers
+                Your themed words are prioritized because they&apos;re the answers
                 you care about. A built-in 42K-word crossword dictionary
                 (Collaborative Word List, MIT-licensed) handles the structural
                 fill.

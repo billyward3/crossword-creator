@@ -319,23 +319,8 @@ function structurePhase(
   return { grid, userWords: offsetPlaced };
 }
 
-function safeMarkBlack(
-  grid: GridModel,
-  r: number,
-  c: number,
-  letterCells: Set<number>
-): void {
-  if (!inBounds(grid, r, c)) return;
-  const idx = cellIndex(grid, r, c);
-  if (letterCells.has(idx)) return;
-  grid.cells[idx] = CELL_BLACK;
-  const p = symmetryPartner(grid, r, c);
-  const pi = cellIndex(grid, p.row, p.col);
-  if (!letterCells.has(pi)) grid.cells[pi] = CELL_BLACK;
-}
-
 /**
- * Like safeMarkBlack but records the cell (and its symmetric partner)
+ * Blacks out a non-letter cell and its symmetric partner, recording both
  * as "protected" so the later repair pass won't un-black them. Used
  * for user word boundaries — un-blacking those merges user words with
  * fill.
@@ -842,19 +827,6 @@ function eliminateStraysAndDoubles(
       }
     }
   }
-}
-
-/**
- * Count cells the best-effort solver left EMPTY (slots it skipped). Used
- * to score multiple solver attempts so we keep the one with the fewest
- * holes — fewer holes means less gibberish from crossing-letter fragments.
- */
-function countSkippedAssignments(result: { grid: GridModel }): number {
-  let count = 0;
-  for (let i = 0; i < result.grid.cells.length; i++) {
-    if (result.grid.cells[i] === CELL_EMPTY) count++;
-  }
-  return count;
 }
 
 // ── Phase 3: Fill (CSP) ────────────────────────────────────────────────

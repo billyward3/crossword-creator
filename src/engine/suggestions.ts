@@ -1,8 +1,7 @@
 import type { GridModel, SlotDescriptor, SlotFeasibility, GridGap } from "./types";
 import { CELL_BLACK, CELL_EMPTY, cellToLetter } from "./types";
-import { cellIndex, cellPosition, inBounds, isBlack, extractSlots, symmetryPartner } from "./grid";
+import { cellIndex, inBounds, isBlack, extractSlots, symmetryPartner } from "./grid";
 import { WordIndex } from "./wordindex";
-import { initializeDomains, assignWord } from "./constraints";
 import { computeClueNumbers } from "@/lib/numbering";
 
 /**
@@ -52,7 +51,6 @@ export function analyzeSuggestions(
   });
 
   // Compute feasibility for each slot
-  const state = initializeDomains(slots, wordIndex);
   const feasibility: SlotFeasibility[] = [];
 
   for (const slot of slots) {

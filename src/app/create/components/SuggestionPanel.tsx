@@ -21,7 +21,7 @@ export function SuggestionPanel({
     <div className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold text-black">Words Needed</h2>
       <p className="text-sm text-gray-700">
-        The generator couldn't fill some slots with your current word list.
+        The generator couldn&apos;t fill some slots with your current word list.
         Add words matching these patterns to improve your puzzle.
       </p>
       <div className="flex flex-col gap-2">

@@ -5,7 +5,7 @@
  * Communicates with the main thread via postMessage.
  */
 
-import type { WorkerRequest, WorkerResponse, WordEntry, GridModel } from "./types";
+import type { WorkerRequest, WorkerResponse, GridModel } from "./types";
 import { buildWordIndex } from "./wordindex";
 import { solve } from "./solver";
 

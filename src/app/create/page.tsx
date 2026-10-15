@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { WordEntry } from "@/engine/types";
 import {
@@ -21,13 +22,19 @@ import { WordlistInput } from "./components/WordlistInput";
 import { WordListSidebar } from "./components/WordListSidebar";
 import { FreeformPreview } from "./components/FreeformPreview";
 import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { useStoredState, writeStored } from "@/lib/stored-state";
+import { useClientValue } from "@/lib/use-client-value";
 
 type CreatorStep = "input" | "generating" | "results";
 
 const STORAGE_KEY_WORDS = "crossword-creator-words";
-const STORAGE_KEY_STRATEGY = "crossword-creator-strategy";
 const STORAGE_KEY_MAX_WORDS = "crossword-creator-max-words";
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
+const NO_WORDS: WordEntry[] = [];
+
+function readQueryStrategy(): string {
+  return new URLSearchParams(window.location.search).get("strategy") ?? "";
+}
 
 const GRID_SIZE_PROMPTS: { label: string; size: string }[] = [
   { label: "5×5", size: "5x5" },
@@ -36,64 +43,36 @@ const GRID_SIZE_PROMPTS: { label: string; size: string }[] = [
 ];
 
 export default function CreatePage() {
-  const [words, setWords] = useState<WordEntry[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [words, setWords] = useStoredState(STORAGE_KEY_WORDS, NO_WORDS);
   const [step, setStep] = useState<CreatorStep>("input");
-  const [strategy, setStrategy] = useState<GenerationMode>("graph-guided");
+  // Strategy is not persisted. It defaults to graph-guided unless a
+  // ?strategy= query param (e.g. from a strategy page) names a valid one.
+  const queryStrategy = useClientValue(readQueryStrategy, "");
+  const [chosenStrategy, setStrategy] = useState<GenerationMode | null>(null);
+  const strategy: GenerationMode =
+    chosenStrategy ??
+    (queryStrategy in STRATEGY_DETAILS ? (queryStrategy as FreeformStrategy) : "graph-guided");
   const [freeformResults, setFreeformResults] = useState<FreeformResult[]>([]);
   const [selectedFreeform, setSelectedFreeform] = useState<number | null>(null);
-  const [maxWords, setMaxWords] = useState<number | null>(null); // null = no limit
+  const [maxWords, setMaxWords] = useStoredState<number | null>(STORAGE_KEY_MAX_WORDS, null); // null = no limit
   const [dictionaryWords, setDictionaryWords] = useState<WordEntry[]>([]);
-  const [dictionaryLoading, setDictionaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    try {
-      const storedWords = localStorage.getItem(STORAGE_KEY_WORDS);
-      if (storedWords) setWords(JSON.parse(storedWords));
-
-      // URL query param can override the default strategy (e.g. from strategy pages)
-      const params = new URLSearchParams(window.location.search);
-      const queryStrategy = params.get("strategy");
-      if (queryStrategy && queryStrategy in STRATEGY_DETAILS) {
-        setStrategy(queryStrategy as FreeformStrategy);
-      }
-
-      const storedMax = localStorage.getItem(STORAGE_KEY_MAX_WORDS);
-      if (storedMax) {
-        const parsed = JSON.parse(storedMax);
-        setMaxWords(parsed === null ? null : Number(parsed));
-      }
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(STORAGE_KEY_MAX_WORDS, JSON.stringify(maxWords));
-  }, [maxWords, hydrated]);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(words));
-  }, [words, hydrated]);
-
-  // Strategy is not persisted. It always defaults to graph-guided unless
-  // overridden by a ?strategy= query param.
 
   // Eagerly load the dictionary on mount. It's used by the adjacency-aware
   // strategy to validate perpendicular completions; loading it up front
   // ensures the first generation has access to it without a race.
+  // loadDictionary caches its promise, so a remount never refetches.
   useEffect(() => {
-    if (dictionaryWords.length > 0 || dictionaryLoading) return;
-    setDictionaryLoading(true);
+    let alive = true;
     loadDictionary()
       .then((dict) => {
-        setDictionaryWords(dictionaryToWordEntries(dict));
-        setDictionaryLoading(false);
+        if (alive) setDictionaryWords(dictionaryToWordEntries(dict));
       })
-      .catch(() => setDictionaryLoading(false));
-    // Only fire once on mount; the guard above prevents duplicate loads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const dictionaryReady = dictionaryWords.length > 0;
@@ -222,21 +201,21 @@ export default function CreatePage() {
         setWords([...words, entry]);
       }
     },
-    [words]
+    [words, setWords]
   );
 
   const handleRemoveWord = useCallback(
     (word: string) => {
       setWords(words.filter((w) => w.word !== word));
     },
-    [words]
+    [words, setWords]
   );
 
   const handleUpdateClue = useCallback(
     (word: string, clue: string) => {
       setWords(words.map((w) => (w.word === word ? { ...w, clue } : w)));
     },
-    [words]
+    [words, setWords]
   );
 
   const handleBack = useCallback(() => {
@@ -274,7 +253,7 @@ export default function CreatePage() {
       fillWords: fillWordList,
     };
 
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [selectedFreeform, freeformResults, words, router]);
 
@@ -282,9 +261,9 @@ export default function CreatePage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
@@ -470,14 +449,11 @@ function MaxWordsSlider({
   const committedSliderValue =
     value === null ? eligibleCount : Math.min(value, max);
 
-  // Local value while dragging. Updates on every input but doesn't trigger regeneration.
-  const [draftValue, setDraftValue] = useState(committedSliderValue);
+  // Local value while dragging, null when idle. Updates on every input but
+  // doesn't trigger regeneration; releasing the slider commits and clears it.
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const draftValue = dragValue ?? committedSliderValue;
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // Sync the draft when the committed value changes externally
-  useEffect(() => {
-    setDraftValue(committedSliderValue);
-  }, [committedSliderValue]);
 
   // Stable ref to the latest commit callback so the listener doesn't get re-attached
   const onChangeRef = useRef(onChange);
@@ -494,6 +470,7 @@ function MaxWordsSlider({
     const handleChange = () => {
       const v = Number(el.value);
       onChangeRef.current(v >= eligibleCount ? null : v);
+      setDragValue(null);
     };
 
     el.addEventListener("change", handleChange);
@@ -526,7 +503,7 @@ function MaxWordsSlider({
           step={1}
           value={draftValue}
           // React's onChange maps to the `input` event and fires continuously during drag
-          onChange={(e) => setDraftValue(Number(e.target.value))}
+          onChange={(e) => setDragValue(Number(e.target.value))}
           className="flex-1 accent-black dark:accent-zinc-100"
           disabled={eligibleCount < 2}
         />
@@ -645,14 +622,14 @@ function StrategySelector({
               </li>
               <li>
                 <span className="font-semibold">Solver completeness:</span>{" "}
-                full backtracking can't always find a complete solution on
+                full backtracking can&apos;t always find a complete solution on
                 dense grids. The best-effort fallback may leave a handful of
                 non-dictionary letter sequences.
               </li>
               <li>
                 <span className="font-semibold">Stray cells:</span> a user
                 word placed near the grid edge may end up with one direction
-                only 1 letter long. The scaffold doesn't yet score for edge
+                only 1 letter long. The scaffold doesn&apos;t yet score for edge
                 spacing.
               </li>
               <li>
@@ -748,7 +725,7 @@ function FreeformView({
   if (results.length === 0) {
     return (
       <div className="p-5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl text-sm text-gray-800 dark:text-zinc-300">
-        Couldn't create a crossword &mdash; your words don't share enough letters
+        Couldn&apos;t create a crossword &mdash; your words don&apos;t share enough letters
         to intersect. Try adding words with common letters (A, E, R, S, T).
       </div>
     );

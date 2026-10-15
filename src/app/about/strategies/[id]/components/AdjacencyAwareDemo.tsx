@@ -181,17 +181,18 @@ export function AdjacencyAwareDemo() {
   const [stepIndex, setStepIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
 
+  // Advancing onto the last step ends playback, whether by timer or by hand.
+  const goToStep = useCallback((i: number) => {
+    const next = Math.min(STEPS.length - 1, i);
+    setStepIndex(next);
+    if (next === STEPS.length - 1) setPlaying(false);
+  }, []);
+
   useEffect(() => {
     if (!playing) return;
-    if (stepIndex >= STEPS.length - 1) {
-      setPlaying(false);
-      return;
-    }
-    const t = setTimeout(() => {
-      setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
-    }, STEP_DURATION_MS);
+    const t = setTimeout(() => goToStep(stepIndex + 1), STEP_DURATION_MS);
     return () => clearTimeout(t);
-  }, [playing, stepIndex]);
+  }, [playing, stepIndex, goToStep]);
 
   const restart = useCallback(() => {
     setStepIndex(0);
@@ -318,7 +319,7 @@ export function AdjacencyAwareDemo() {
           {playing ? "Pause" : stepIndex >= STEPS.length - 1 ? "Done" : "Play"}
         </button>
         <button
-          onClick={() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))}
+          onClick={() => goToStep(stepIndex + 1)}
           disabled={stepIndex >= STEPS.length - 1}
           className="px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-zinc-700 rounded-lg text-black dark:text-zinc-100 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 transition-colors"
         >

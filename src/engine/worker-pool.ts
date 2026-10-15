@@ -65,7 +65,7 @@ export class WorkerPool {
       );
 
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        this.handleWorkerMessage(event.data, i);
+        this.handleWorkerMessage(event.data);
       };
 
       worker.onerror = (error) => {
@@ -85,7 +85,7 @@ export class WorkerPool {
     }
   }
 
-  private handleWorkerMessage(response: WorkerResponse, workerIndex: number): void {
+  private handleWorkerMessage(response: WorkerResponse): void {
     const request = this.currentRequest;
     if (!request) return;
 

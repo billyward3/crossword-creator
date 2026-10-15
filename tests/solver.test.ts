@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { solve } from "@/engine/solver";
 import { buildWordIndex } from "@/engine/wordindex";
-import { gridFromPattern, gridToPattern, extractSlots } from "@/engine/grid";
-import { CELL_EMPTY, CELL_BLACK, cellToLetter } from "@/engine/types";
+import { gridFromPattern, gridToPattern } from "@/engine/grid";
+import { CELL_EMPTY, CELL_BLACK } from "@/engine/types";
 
 describe("Solver", () => {
   it("solves a trivial 3x3 grid", () => {
@@ -41,7 +41,7 @@ describe("Solver", () => {
 
       // Verify all words are from our wordlist
       const upperWords = words.map((w) => w.word.toUpperCase());
-      for (const [_, word] of result.assignments) {
+      for (const word of result.assignments.values()) {
         expect(upperWords).toContain(word);
       }
 
