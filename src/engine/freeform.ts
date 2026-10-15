@@ -442,13 +442,6 @@ function findBestParallelSeed(
 
 // ─── Placement Algorithm ───
 
-interface PlacementOptions {
-  maxPlaced?: number;
-  validWords?: Set<string>;
-  validBigrams?: Set<string>;
-  parallelSeed?: boolean;
-}
-
 /**
  * Core placement algorithm for one ordering of words.
  *
@@ -842,7 +835,6 @@ function canFillGap(
     pr -= pdr;
     pc -= pdc;
   }
-  const gapOffset = runCells.length;
   runCells.push({ r: gapRow, c: gapCol, letter: gapLetter });
   // Walk forward
   let nr = gapRow + pdr, nc = gapCol + pdc;

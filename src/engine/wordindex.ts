@@ -118,7 +118,7 @@ export class WordIndex {
     sets.sort((a, b) => a.size - b.size);
 
     // Intersect all sets
-    let result: number[] = [];
+    const result: number[] = [];
     const smallest = sets[0];
     for (const idx of smallest) {
       if (excludeUsed?.has(idx)) continue;

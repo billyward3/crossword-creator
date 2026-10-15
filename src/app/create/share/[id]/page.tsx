@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import type { Puzzle } from "@/lib/puzzle/types";
+import { useClientValue } from "@/lib/use-client-value";
 
 export default function SharePage({
   params,
@@ -13,11 +15,7 @@ export default function SharePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [origin, setOrigin] = useState("");
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  const origin = useClientValue(() => window.location.origin, "");
 
   useEffect(() => {
     let alive = true;
@@ -88,9 +86,9 @@ export default function SharePage({
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/create/edit"
@@ -106,7 +104,7 @@ export default function SharePage({
         <div>
           <h1 className="text-3xl font-bold mb-2">Puzzle ready to share</h1>
           <p className="text-gray-800 dark:text-zinc-300">
-            Anyone with this link can solve your puzzle. The link won't expire
+            Anyone with this link can solve your puzzle. The link won&apos;t expire
             for 90 days.
           </p>
         </div>

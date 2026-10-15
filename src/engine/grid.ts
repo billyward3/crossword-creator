@@ -3,7 +3,6 @@ import {
   CELL_EMPTY,
   type GridModel,
   type SlotDescriptor,
-  type SlotIntersection,
   type GridGap,
 } from "./types";
 

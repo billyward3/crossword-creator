@@ -19,13 +19,13 @@ export const metadata: Metadata = {
 };
 
 // Runs synchronously before React hydrates, applying the theme class to <html>
-// to prevent a flash of unstyled content when dark mode is preferred.
+// to prevent a flash of unstyled content. Dark is the default; the user's
+// stored preference (if they've used the toggle) overrides it.
 const themeInitScript = `
 (function() {
   try {
     var stored = localStorage.getItem('crossword-creator-theme');
-    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var theme = stored || (prefersDark ? 'dark' : 'light');
+    var theme = stored || 'dark';
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     }

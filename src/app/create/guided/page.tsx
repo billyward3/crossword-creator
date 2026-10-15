@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { WordEntry } from "@/engine/types";
 import type { SlotDescriptor } from "@/engine/types";
@@ -13,7 +14,7 @@ import {
   cellIndex,
   isBlack,
 } from "@/engine/grid";
-import { buildWordIndex, WordIndex } from "@/engine/wordindex";
+import { buildWordIndex } from "@/engine/wordindex";
 import { solve, solveBestEffort } from "@/engine/solver";
 import {
   loadDictionary,
@@ -24,9 +25,11 @@ import { InteractiveGrid } from "./components/InteractiveGrid";
 import { SlotPanel } from "./components/SlotPanel";
 import { WordListSidebar } from "../components/WordListSidebar";
 import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { useStoredState, writeStored } from "@/lib/stored-state";
 
 const STORAGE_KEY_WORDS = "crossword-creator-words";
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
+const NO_WORDS: WordEntry[] = [];
 
 const GRID_SIZES = [
   { label: "5\u00d75", rows: 5, cols: 5 },
@@ -39,7 +42,8 @@ type Tool = "select" | "black";
 export default function GuidedBuilderPage() {
   const [gridSize, setGridSize] = useState({ rows: 5, cols: 5 });
   const [grid, setGrid] = useState<GridModel>(() => createGrid(5, 5));
-  const [userWords, setUserWords] = useState<WordEntry[]>([]);
+  // Shared with /create, so edits here show up there too.
+  const [userWords, setUserWords] = useStoredState(STORAGE_KEY_WORDS, NO_WORDS);
   const [dictLoaded, setDictLoaded] = useState(false);
   const [dictEntries, setDictEntries] = useState<WordEntry[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotDescriptor | null>(null);
@@ -50,26 +54,7 @@ export default function GuidedBuilderPage() {
   const [history, setHistory] = useState<GridModel[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
   const router = useRouter();
-
-  // Load user words from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_WORDS);
-      if (stored) setUserWords(JSON.parse(stored));
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  // Persist user words back to localStorage so edits sync to /create
-  useEffect(() => {
-    if (hydrated) {
-      try {
-        localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(userWords));
-      } catch {}
-    }
-  }, [userWords, hydrated]);
 
   // Load dictionary
   useEffect(() => {
@@ -81,7 +66,6 @@ export default function GuidedBuilderPage() {
 
   // Extract slots whenever grid changes
   const slots = extractSlots(grid);
-  const slotMap = new Map(slots.map((s) => [s.id, s]));
 
   // Build word index from user words + dictionary
   const { entries: mergedEntries, userWordSet } = mergeWithDictionary(
@@ -136,7 +120,7 @@ export default function GuidedBuilderPage() {
       const slot = findSlotAtCell(row, col, direction);
       setSelectedSlot(slot);
     },
-    [tool, grid, selectedCell, direction, findSlotAtCell]
+    [tool, grid, symmetric, selectedCell, direction, findSlotAtCell]
   );
 
   // Handle placing a word in the selected slot
@@ -441,7 +425,7 @@ export default function GuidedBuilderPage() {
               "Couldn't find a perfect fill, so a best-effort fill was used instead. Some slots may be empty."
             );
           }
-        } catch (e) {
+        } catch {
           setError("Auto-fill failed. Try a different grid layout.");
         }
         setAutoFilling(false);
@@ -550,7 +534,7 @@ export default function GuidedBuilderPage() {
       fillWords: fillWordList,
       title: "",
     };
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [grid, slots, userWords, router]);
 
@@ -558,9 +542,9 @@ export default function GuidedBuilderPage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"

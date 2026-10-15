@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useStoredState } from "@/lib/stored-state";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
 
@@ -11,16 +11,9 @@ const STORAGE_KEY_EDITOR = "crossword-editor-state";
  * is always current.
  */
 export function EditorReturnLink() {
-  const [hasSaved, setHasSaved] = useState(false);
+  const [saved] = useStoredState<unknown>(STORAGE_KEY_EDITOR, null);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_EDITOR);
-      if (stored) setHasSaved(true);
-    } catch {}
-  }, []);
-
-  if (!hasSaved) return null;
+  if (saved === null) return null;
 
   return (
     <a

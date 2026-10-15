@@ -99,13 +99,13 @@ export function FreeformPreview({
       {!hideUnplaced && unplaced.length > 0 && (
         <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl text-sm">
           <p className="font-semibold text-black dark:text-zinc-100 mb-1">
-            {unplaced.length} word{unplaced.length !== 1 ? "s" : ""} couldn't be placed
+            {unplaced.length} word{unplaced.length !== 1 ? "s" : ""} couldn&apos;t be placed
           </p>
           <p className="text-gray-800 dark:text-zinc-300 mb-1">
             {unplaced.map((w) => w.word).join(", ")}
           </p>
           <p className="text-gray-700 dark:text-zinc-400 text-xs">
-            These words don't share enough letters with the placed words to create crossings.
+            These words don&apos;t share enough letters with the placed words to create crossings.
             Adding words with common letters (A, E, R, S, T) helps.
           </p>
         </div>
@@ -123,7 +123,6 @@ function getClueNumber(
   // Collect all cells that start a word, sorted by position
   const starts: { row: number; col: number }[] = [];
   for (const pw of placed) {
-    const key = `${pw.row},${pw.col}`;
     if (!starts.some((s) => s.row === pw.row && s.col === pw.col)) {
       starts.push({ row: pw.row, col: pw.col });
     }

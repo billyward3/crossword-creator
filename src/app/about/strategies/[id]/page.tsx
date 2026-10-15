@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   STRATEGY_DETAILS,
@@ -28,9 +29,9 @@ export default async function StrategyPage({
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
@@ -103,7 +104,7 @@ export default async function StrategyPage({
               Walk through a placement
             </h2>
             <p className="text-sm text-gray-700 dark:text-zinc-400">
-              Step through the algorithm's most distinctive move: fitting
+              Step through the algorithm&apos;s most distinctive move: fitting
               two words side-by-side when they share no letters.
             </p>
             <AdjacencyAwareDemo />

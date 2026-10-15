@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Puzzle } from "@/lib/puzzle/types";
+import { useClientValue } from "@/lib/use-client-value";
+import { writeStored } from "@/lib/stored-state";
 import { isMyPuzzle } from "@/lib/puzzle/my-puzzles";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
@@ -160,13 +163,9 @@ export default function SolvePage({
   const [checked, setChecked] = useState<Record<string, "right" | "wrong">>({});
   /** True if this browser uploaded the puzzle. localStorage check, so it runs
    *  client-side only. */
-  const [isCreator, setIsCreator] = useState(false);
+  const isCreator = useClientValue(() => isMyPuzzle(id), false);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    setIsCreator(isMyPuzzle(id));
-  }, [id]);
 
   /**
    * Load this puzzle into the editor as a starting point. Anyone viewing
@@ -182,7 +181,7 @@ export default function SolvePage({
       fillWords: puzzle.fillWords ?? [],
       title: puzzle.title ?? "",
     };
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [puzzle, router]);
 
@@ -546,9 +545,9 @@ export default function SolvePage({
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { WordEntry } from "@/engine/types";
 import type { Puzzle } from "@/lib/puzzle/types";
 import { markPuzzleAsMine } from "@/lib/puzzle/my-puzzles";
+import { useStoredState } from "@/lib/stored-state";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
-const STORAGE_KEY_WORDS = "crossword-creator-words";
 const GUTTER = 2;
 
 type CellValue = string; // single uppercase letter, "#" for black, "" for empty
@@ -28,6 +28,13 @@ interface EditorState {
   userWords: string[];
   fillWords: string[];
   title?: string;
+}
+
+/** An undo step: the grid before an edit, and the padding offset the edit applied. */
+interface HistoryEntry {
+  grid: CellValue[][];
+  rowOffset: number;
+  colOffset: number;
 }
 
 function createEmptyGrid(rows: number, cols: number): CellValue[][] {
@@ -188,96 +195,132 @@ function wordKey(w: { word: string; row: number; col: number; direction: string 
   return `${w.row},${w.col},${w.direction}`;
 }
 
+const EMPTY_EDITOR: EditorState = {
+  grid: createEmptyGrid(5, 5),
+  clues: {},
+  userWords: [],
+  fillWords: [],
+  title: "",
+};
+
+/** Moves "row,col,direction" clue keys by the offset padGrid applied. */
+function shiftClues(
+  clues: Record<string, string>,
+  rowOffset: number,
+  colOffset: number
+): Record<string, string> {
+  if (rowOffset === 0 && colOffset === 0) return clues;
+  const shifted: Record<string, string> = {};
+  for (const [key, clue] of Object.entries(clues)) {
+    const [rStr, cStr, dir] = key.split(",");
+    shifted[`${Number(rStr) + rowOffset},${Number(cStr) + colOffset},${dir}`] = clue;
+  }
+  return shifted;
+}
+
+/**
+ * Fill in defaults and give the grid its gutter. Other pages hand off
+ * unpadded grids; the editor itself only saves padded ones, so this is a
+ * no-op for state the editor wrote.
+ */
+function normalizeEditorState(state: EditorState | null): EditorState {
+  if (!state) return EMPTY_EDITOR;
+  const { grid, rowOffset, colOffset } = padGrid(state.grid);
+  // padGrid shifts every cell by (rowOffset, colOffset). Clue keys
+  // are "row,col,direction" and reference the *current* grid
+  // coordinates, so shift them in lockstep — otherwise the editor
+  // looks up clues at stale positions and shows "Add clue" for
+  // words that came in with clues attached.
+  return {
+    grid,
+    clues: shiftClues(state.clues ?? {}, rowOffset, colOffset),
+    userWords: state.userWords ?? [],
+    fillWords: state.fillWords ?? [],
+    title: state.title ?? "",
+  };
+}
+
 export default function EditPage() {
-  const [grid, setGrid] = useState<CellValue[][]>(() => createEmptyGrid(5, 5));
-  const [clues, setClues] = useState<Record<string, string>>({});
-  const [userWords, setUserWords] = useState<string[]>([]);
-  const [fillWords, setFillWords] = useState<string[]>([]);
-  const [title, setTitle] = useState("");
+  // The editor state lives in localStorage, so it survives reloads and
+  // other pages can hand a puzzle off to the editor by writing it there.
+  const [storedEditor, setStoredEditor] = useStoredState<EditorState | null>(
+    STORAGE_KEY_EDITOR,
+    null
+  );
+  const editor = useMemo(() => normalizeEditorState(storedEditor), [storedEditor]);
+  const { grid, clues, userWords, fillWords } = editor;
+  const title = editor.title ?? "";
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [direction, setDirection] = useState<"across" | "down">("across");
   const [tool, setTool] = useState<"letter" | "black">("letter");
-  const [hydrated, setHydrated] = useState(false);
-  const [history, setHistory] = useState<CellValue[][][]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Load state from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_EDITOR);
-      if (stored) {
-        const state: EditorState = JSON.parse(stored);
-        const { grid: padded, rowOffset, colOffset } = padGrid(state.grid);
-        setGrid(padded);
-        // padGrid shifts every cell by (rowOffset, colOffset). Clue keys
-        // are "row,col,direction" and reference the *current* grid
-        // coordinates, so shift them in lockstep — otherwise the editor
-        // looks up clues at stale positions and shows "Add clue" for
-        // words that came in with clues attached.
-        if (rowOffset !== 0 || colOffset !== 0) {
-          const shifted: Record<string, string> = {};
-          for (const [key, clue] of Object.entries(state.clues)) {
-            const [rStr, cStr, dir] = key.split(",");
-            const r = Number(rStr) + rowOffset;
-            const c = Number(cStr) + colOffset;
-            shifted[`${r},${c},${dir}`] = clue;
-          }
-          setClues(shifted);
-        } else {
-          setClues(state.clues);
-        }
-        setUserWords(state.userWords);
-        setFillWords(state.fillWords ?? []);
-        setTitle(state.title ?? "");
-      }
-    } catch {}
-    setHydrated(true);
-  }, []);
+  const updateEditor = useCallback(
+    (patch: (prev: EditorState) => Partial<EditorState>) =>
+      setStoredEditor((prev) => {
+        const base = normalizeEditorState(prev);
+        return { ...base, ...patch(base) };
+      }),
+    [setStoredEditor]
+  );
+  const setClues = useCallback(
+    (update: (prev: Record<string, string>) => Record<string, string>) =>
+      updateEditor((s) => ({ clues: update(s.clues) })),
+    [updateEditor]
+  );
+  const setTitle = useCallback(
+    (next: string) => updateEditor(() => ({ title: next })),
+    [updateEditor]
+  );
 
-  // Save state to localStorage on changes
-  useEffect(() => {
-    if (!hydrated) return;
-    const state: EditorState = { grid, clues, userWords, fillWords, title };
-    try {
-      localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(state));
-    } catch {}
-  }, [grid, clues, userWords, fillWords, title, hydrated]);
-
-  // Ensure grid always has gutter padding around content
-  const ensurePadding = useCallback((g: CellValue[][]): CellValue[][] => {
-    const { grid: padded, rowOffset, colOffset } = padGrid(g);
-    if (rowOffset !== 0 || colOffset !== 0) {
-      if (selectedCell) {
-        setSelectedCell({ row: selectedCell.row + rowOffset, col: selectedCell.col + colOffset });
-      }
-    }
-    return padded;
-  }, [selectedCell]);
-
-  const pushHistory = useCallback(() => {
-    setHistory((h) => {
-      const next = [...h, grid];
-      if (next.length > 50) return next.slice(next.length - 50);
-      return next;
-    });
-  }, [grid]);
+  /**
+   * Every grid edit goes through here. Re-pads the grid so it keeps its
+   * gutter, shifts clue keys and the selection by the same offset, and
+   * records the edit for undo. Returns the padded grid and offset so
+   * callers can place the cursor in the new coordinates.
+   */
+  const applyGridEdit = useCallback(
+    (next: CellValue[][]) => {
+      const { grid: padded, rowOffset, colOffset } = padGrid(next);
+      setHistory((h) => [...h, { grid, rowOffset, colOffset }].slice(-50));
+      updateEditor((s) => ({
+        grid: padded,
+        clues: shiftClues(s.clues, rowOffset, colOffset),
+      }));
+      setSelectedCell((sel) => sel && { row: sel.row + rowOffset, col: sel.col + colOffset });
+      return { padded, rowOffset, colOffset };
+    },
+    [grid, updateEditor]
+  );
 
   const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
-    setGrid(history[history.length - 1]);
+    const last = history[history.length - 1];
+    if (!last) return;
+    const { rowOffset, colOffset } = last;
+    updateEditor((s) => ({
+      grid: last.grid,
+      clues: shiftClues(s.clues, -rowOffset, -colOffset),
+    }));
+    setSelectedCell((sel) => {
+      if (!sel) return null;
+      const row = sel.row - rowOffset;
+      const col = sel.col - colOffset;
+      const inBounds = row >= 0 && row < last.grid.length && col >= 0 && col < last.grid[0].length;
+      return inBounds ? { row, col } : null;
+    });
     setHistory((h) => h.slice(0, -1));
-  }, [history]);
+  }, [history, updateEditor]);
 
   // Cell click
   const handleCellClick = useCallback((row: number, col: number) => {
     if (tool === "black") {
-      pushHistory();
       const newGrid = grid.map((r) => [...r]);
       newGrid[row][col] = newGrid[row][col] === "#" ? "" : "#";
-      setGrid(ensurePadding(newGrid));
+      applyGridEdit(newGrid);
       return;
     }
 
@@ -288,7 +331,7 @@ export default function EditPage() {
       return;
     }
     setSelectedCell({ row, col });
-  }, [tool, grid, selectedCell, pushHistory, ensurePadding]);
+  }, [tool, grid, selectedCell, applyGridEdit]);
 
   // Type letter
   const typeLetter = useCallback((letter: string) => {
@@ -297,28 +340,25 @@ export default function EditPage() {
     if (!/^[A-Z]$/.test(upper)) return;
     if (grid[selectedCell.row][selectedCell.col] === "#") return;
 
-    pushHistory();
     const newGrid = grid.map((r) => [...r]);
     newGrid[selectedCell.row][selectedCell.col] = upper;
-    const padded = ensurePadding(newGrid);
-    setGrid(padded);
+    const { padded, rowOffset, colOffset } = applyGridEdit(newGrid);
 
-    // Advance cursor
+    // Advance cursor, in the padded grid's coordinates
     const dr = direction === "down" ? 1 : 0;
     const dc = direction === "across" ? 1 : 0;
-    const nr = selectedCell.row + dr;
-    const nc = selectedCell.col + dc;
+    const nr = selectedCell.row + rowOffset + dr;
+    const nc = selectedCell.col + colOffset + dc;
     if (nr < padded.length && nc < padded[0].length && padded[nr][nc] !== "#") {
       setSelectedCell({ row: nr, col: nc });
     }
-  }, [selectedCell, grid, direction, pushHistory, ensurePadding]);
+  }, [selectedCell, grid, direction, applyGridEdit]);
 
   // Backspace
   const handleBackspace = useCallback(() => {
     if (!selectedCell) return;
     if (grid[selectedCell.row][selectedCell.col] === "#") return;
 
-    pushHistory();
     const newGrid = grid.map((r) => [...r]);
     const cur = newGrid[selectedCell.row][selectedCell.col];
 
@@ -330,14 +370,14 @@ export default function EditPage() {
       const pc = selectedCell.col - dc;
       if (pr >= 0 && pc >= 0 && newGrid[pr][pc] !== "#") {
         newGrid[pr][pc] = "";
-        setGrid(newGrid);
+        applyGridEdit(newGrid);
         setSelectedCell({ row: pr, col: pc });
       }
     } else {
       newGrid[selectedCell.row][selectedCell.col] = "";
-      setGrid(newGrid);
+      applyGridEdit(newGrid);
     }
-  }, [selectedCell, grid, direction, pushHistory]);
+  }, [selectedCell, grid, direction, applyGridEdit]);
 
   // Move selection
   const moveSelection = useCallback((dr: number, dc: number) => {
@@ -362,10 +402,9 @@ export default function EditPage() {
       if (e.key === "Backspace") { e.preventDefault(); handleBackspace(); return; }
       if (e.key === "Delete") {
         e.preventDefault();
-        pushHistory();
         const newGrid = grid.map((r) => [...r]);
         newGrid[selectedCell.row][selectedCell.col] = "";
-        setGrid(newGrid);
+        applyGridEdit(newGrid);
         return;
       }
       if (e.key === "ArrowLeft") { e.preventDefault(); moveSelection(0, -1); if (direction !== "across") setDirection("across"); return; }
@@ -391,7 +430,7 @@ export default function EditPage() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedCell, grid, direction, tool, typeLetter, handleBackspace, moveSelection, pushHistory, handleUndo]);
+  }, [selectedCell, grid, direction, tool, typeLetter, handleBackspace, moveSelection, handleUndo, applyGridEdit]);
 
   // Derive words from the grid
   const detected = detectWords(grid);
@@ -410,7 +449,7 @@ export default function EditPage() {
 
   const updateClue = useCallback((key: string, clue: string) => {
     setClues((prev) => ({ ...prev, [key]: clue }));
-  }, []);
+  }, [setClues]);
 
   /**
    * Upload the current puzzle to the backend and navigate to the share
@@ -530,9 +569,9 @@ export default function EditPage() {
     <main className="min-h-screen bg-white dark:bg-zinc-950 text-black dark:text-zinc-100">
       <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between pr-12">
-          <a href="/" className="text-xl font-bold text-black dark:text-zinc-100">
+          <Link href="/" className="text-xl font-bold text-black dark:text-zinc-100">
             Crossword Creator
-          </a>
+          </Link>
           <div className="flex items-center gap-5 text-sm">
             <a
               href="/about"
@@ -725,8 +764,6 @@ export default function EditPage() {
                   detected={w}
                   onClueChange={(clue) => updateClue(wordKey(w), clue)}
                   onSelect={() => {
-                    const dr = w.direction === "down" ? 1 : 0;
-                    const dc = w.direction === "across" ? 1 : 0;
                     setSelectedCell({ row: w.row, col: w.col });
                     setDirection(w.direction);
                   }}
