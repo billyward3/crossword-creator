@@ -30,6 +30,13 @@ interface EditorState {
   title?: string;
 }
 
+/** An undo step: the grid before an edit, and the padding offset the edit applied. */
+interface HistoryEntry {
+  grid: CellValue[][];
+  rowOffset: number;
+  colOffset: number;
+}
+
 function createEmptyGrid(rows: number, cols: number): CellValue[][] {
   return Array.from({ length: rows }, () => Array(cols).fill(""));
 }
@@ -196,6 +203,21 @@ const EMPTY_EDITOR: EditorState = {
   title: "",
 };
 
+/** Moves "row,col,direction" clue keys by the offset padGrid applied. */
+function shiftClues(
+  clues: Record<string, string>,
+  rowOffset: number,
+  colOffset: number
+): Record<string, string> {
+  if (rowOffset === 0 && colOffset === 0) return clues;
+  const shifted: Record<string, string> = {};
+  for (const [key, clue] of Object.entries(clues)) {
+    const [rStr, cStr, dir] = key.split(",");
+    shifted[`${Number(rStr) + rowOffset},${Number(cStr) + colOffset},${dir}`] = clue;
+  }
+  return shifted;
+}
+
 /**
  * Fill in defaults and give the grid its gutter. Other pages hand off
  * unpadded grids; the editor itself only saves padded ones, so this is a
@@ -209,20 +231,9 @@ function normalizeEditorState(state: EditorState | null): EditorState {
   // coordinates, so shift them in lockstep — otherwise the editor
   // looks up clues at stale positions and shows "Add clue" for
   // words that came in with clues attached.
-  let clues = state.clues ?? {};
-  if (rowOffset !== 0 || colOffset !== 0) {
-    const shifted: Record<string, string> = {};
-    for (const [key, clue] of Object.entries(clues)) {
-      const [rStr, cStr, dir] = key.split(",");
-      const r = Number(rStr) + rowOffset;
-      const c = Number(cStr) + colOffset;
-      shifted[`${r},${c},${dir}`] = clue;
-    }
-    clues = shifted;
-  }
   return {
     grid,
-    clues,
+    clues: shiftClues(state.clues ?? {}, rowOffset, colOffset),
     userWords: state.userWords ?? [],
     fillWords: state.fillWords ?? [],
     title: state.title ?? "",
@@ -242,7 +253,7 @@ export default function EditPage() {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [direction, setDirection] = useState<"across" | "down">("across");
   const [tool, setTool] = useState<"letter" | "black">("letter");
-  const [history, setHistory] = useState<CellValue[][][]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -256,10 +267,6 @@ export default function EditPage() {
       }),
     [setStoredEditor]
   );
-  const setGrid = useCallback(
-    (next: CellValue[][]) => updateEditor(() => ({ grid: next })),
-    [updateEditor]
-  );
   const setClues = useCallback(
     (update: (prev: Record<string, string>) => Record<string, string>) =>
       updateEditor((s) => ({ clues: update(s.clues) })),
@@ -270,38 +277,50 @@ export default function EditPage() {
     [updateEditor]
   );
 
-  // Ensure grid always has gutter padding around content
-  const ensurePadding = useCallback((g: CellValue[][]): CellValue[][] => {
-    const { grid: padded, rowOffset, colOffset } = padGrid(g);
-    if (rowOffset !== 0 || colOffset !== 0) {
-      if (selectedCell) {
-        setSelectedCell({ row: selectedCell.row + rowOffset, col: selectedCell.col + colOffset });
-      }
-    }
-    return padded;
-  }, [selectedCell]);
-
-  const pushHistory = useCallback(() => {
-    setHistory((h) => {
-      const next = [...h, grid];
-      if (next.length > 50) return next.slice(next.length - 50);
-      return next;
-    });
-  }, [grid]);
+  /**
+   * Every grid edit goes through here. Re-pads the grid so it keeps its
+   * gutter, shifts clue keys and the selection by the same offset, and
+   * records the edit for undo. Returns the padded grid and offset so
+   * callers can place the cursor in the new coordinates.
+   */
+  const applyGridEdit = useCallback(
+    (next: CellValue[][]) => {
+      const { grid: padded, rowOffset, colOffset } = padGrid(next);
+      setHistory((h) => [...h, { grid, rowOffset, colOffset }].slice(-50));
+      updateEditor((s) => ({
+        grid: padded,
+        clues: shiftClues(s.clues, rowOffset, colOffset),
+      }));
+      setSelectedCell((sel) => sel && { row: sel.row + rowOffset, col: sel.col + colOffset });
+      return { padded, rowOffset, colOffset };
+    },
+    [grid, updateEditor]
+  );
 
   const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
-    setGrid(history[history.length - 1]);
+    const last = history[history.length - 1];
+    if (!last) return;
+    const { rowOffset, colOffset } = last;
+    updateEditor((s) => ({
+      grid: last.grid,
+      clues: shiftClues(s.clues, -rowOffset, -colOffset),
+    }));
+    setSelectedCell((sel) => {
+      if (!sel) return null;
+      const row = sel.row - rowOffset;
+      const col = sel.col - colOffset;
+      const inBounds = row >= 0 && row < last.grid.length && col >= 0 && col < last.grid[0].length;
+      return inBounds ? { row, col } : null;
+    });
     setHistory((h) => h.slice(0, -1));
-  }, [history, setGrid]);
+  }, [history, updateEditor]);
 
   // Cell click
   const handleCellClick = useCallback((row: number, col: number) => {
     if (tool === "black") {
-      pushHistory();
       const newGrid = grid.map((r) => [...r]);
       newGrid[row][col] = newGrid[row][col] === "#" ? "" : "#";
-      setGrid(ensurePadding(newGrid));
+      applyGridEdit(newGrid);
       return;
     }
 
@@ -312,7 +331,7 @@ export default function EditPage() {
       return;
     }
     setSelectedCell({ row, col });
-  }, [tool, grid, selectedCell, pushHistory, ensurePadding, setGrid]);
+  }, [tool, grid, selectedCell, applyGridEdit]);
 
   // Type letter
   const typeLetter = useCallback((letter: string) => {
@@ -321,28 +340,25 @@ export default function EditPage() {
     if (!/^[A-Z]$/.test(upper)) return;
     if (grid[selectedCell.row][selectedCell.col] === "#") return;
 
-    pushHistory();
     const newGrid = grid.map((r) => [...r]);
     newGrid[selectedCell.row][selectedCell.col] = upper;
-    const padded = ensurePadding(newGrid);
-    setGrid(padded);
+    const { padded, rowOffset, colOffset } = applyGridEdit(newGrid);
 
-    // Advance cursor
+    // Advance cursor, in the padded grid's coordinates
     const dr = direction === "down" ? 1 : 0;
     const dc = direction === "across" ? 1 : 0;
-    const nr = selectedCell.row + dr;
-    const nc = selectedCell.col + dc;
+    const nr = selectedCell.row + rowOffset + dr;
+    const nc = selectedCell.col + colOffset + dc;
     if (nr < padded.length && nc < padded[0].length && padded[nr][nc] !== "#") {
       setSelectedCell({ row: nr, col: nc });
     }
-  }, [selectedCell, grid, direction, pushHistory, ensurePadding, setGrid]);
+  }, [selectedCell, grid, direction, applyGridEdit]);
 
   // Backspace
   const handleBackspace = useCallback(() => {
     if (!selectedCell) return;
     if (grid[selectedCell.row][selectedCell.col] === "#") return;
 
-    pushHistory();
     const newGrid = grid.map((r) => [...r]);
     const cur = newGrid[selectedCell.row][selectedCell.col];
 
@@ -354,14 +370,14 @@ export default function EditPage() {
       const pc = selectedCell.col - dc;
       if (pr >= 0 && pc >= 0 && newGrid[pr][pc] !== "#") {
         newGrid[pr][pc] = "";
-        setGrid(newGrid);
+        applyGridEdit(newGrid);
         setSelectedCell({ row: pr, col: pc });
       }
     } else {
       newGrid[selectedCell.row][selectedCell.col] = "";
-      setGrid(newGrid);
+      applyGridEdit(newGrid);
     }
-  }, [selectedCell, grid, direction, pushHistory, setGrid]);
+  }, [selectedCell, grid, direction, applyGridEdit]);
 
   // Move selection
   const moveSelection = useCallback((dr: number, dc: number) => {
@@ -386,10 +402,9 @@ export default function EditPage() {
       if (e.key === "Backspace") { e.preventDefault(); handleBackspace(); return; }
       if (e.key === "Delete") {
         e.preventDefault();
-        pushHistory();
         const newGrid = grid.map((r) => [...r]);
         newGrid[selectedCell.row][selectedCell.col] = "";
-        setGrid(newGrid);
+        applyGridEdit(newGrid);
         return;
       }
       if (e.key === "ArrowLeft") { e.preventDefault(); moveSelection(0, -1); if (direction !== "across") setDirection("across"); return; }
@@ -415,7 +430,7 @@ export default function EditPage() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedCell, grid, direction, tool, typeLetter, handleBackspace, moveSelection, pushHistory, handleUndo, setGrid]);
+  }, [selectedCell, grid, direction, tool, typeLetter, handleBackspace, moveSelection, handleUndo, applyGridEdit]);
 
   // Derive words from the grid
   const detected = detectWords(grid);
