@@ -22,12 +22,19 @@ import { WordlistInput } from "./components/WordlistInput";
 import { WordListSidebar } from "./components/WordListSidebar";
 import { FreeformPreview } from "./components/FreeformPreview";
 import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { useStoredState, writeStored } from "@/lib/stored-state";
+import { useClientValue } from "@/lib/use-client-value";
 
 type CreatorStep = "input" | "generating" | "results";
 
 const STORAGE_KEY_WORDS = "crossword-creator-words";
 const STORAGE_KEY_MAX_WORDS = "crossword-creator-max-words";
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
+const NO_WORDS: WordEntry[] = [];
+
+function readQueryStrategy(): string {
+  return new URLSearchParams(window.location.search).get("strategy") ?? "";
+}
 
 const GRID_SIZE_PROMPTS: { label: string; size: string }[] = [
   { label: "5×5", size: "5x5" },
@@ -36,48 +43,21 @@ const GRID_SIZE_PROMPTS: { label: string; size: string }[] = [
 ];
 
 export default function CreatePage() {
-  const [words, setWords] = useState<WordEntry[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [words, setWords] = useStoredState(STORAGE_KEY_WORDS, NO_WORDS);
   const [step, setStep] = useState<CreatorStep>("input");
-  const [strategy, setStrategy] = useState<GenerationMode>("graph-guided");
+  // Strategy is not persisted. It defaults to graph-guided unless a
+  // ?strategy= query param (e.g. from a strategy page) names a valid one.
+  const queryStrategy = useClientValue(readQueryStrategy, "");
+  const [chosenStrategy, setStrategy] = useState<GenerationMode | null>(null);
+  const strategy: GenerationMode =
+    chosenStrategy ??
+    (queryStrategy in STRATEGY_DETAILS ? (queryStrategy as FreeformStrategy) : "graph-guided");
   const [freeformResults, setFreeformResults] = useState<FreeformResult[]>([]);
   const [selectedFreeform, setSelectedFreeform] = useState<number | null>(null);
-  const [maxWords, setMaxWords] = useState<number | null>(null); // null = no limit
+  const [maxWords, setMaxWords] = useStoredState<number | null>(STORAGE_KEY_MAX_WORDS, null); // null = no limit
   const [dictionaryWords, setDictionaryWords] = useState<WordEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    try {
-      const storedWords = localStorage.getItem(STORAGE_KEY_WORDS);
-      if (storedWords) setWords(JSON.parse(storedWords));
-
-      // URL query param can override the default strategy (e.g. from strategy pages)
-      const params = new URLSearchParams(window.location.search);
-      const queryStrategy = params.get("strategy");
-      if (queryStrategy && queryStrategy in STRATEGY_DETAILS) {
-        setStrategy(queryStrategy as FreeformStrategy);
-      }
-
-      const storedMax = localStorage.getItem(STORAGE_KEY_MAX_WORDS);
-      if (storedMax) {
-        const parsed = JSON.parse(storedMax);
-        setMaxWords(parsed === null ? null : Number(parsed));
-      }
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(STORAGE_KEY_MAX_WORDS, JSON.stringify(maxWords));
-  }, [maxWords, hydrated]);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(words));
-  }, [words, hydrated]);
-
-  // Strategy is not persisted. It always defaults to graph-guided unless
-  // overridden by a ?strategy= query param.
 
   // Eagerly load the dictionary on mount. It's used by the adjacency-aware
   // strategy to validate perpendicular completions; loading it up front
@@ -221,21 +201,21 @@ export default function CreatePage() {
         setWords([...words, entry]);
       }
     },
-    [words]
+    [words, setWords]
   );
 
   const handleRemoveWord = useCallback(
     (word: string) => {
       setWords(words.filter((w) => w.word !== word));
     },
-    [words]
+    [words, setWords]
   );
 
   const handleUpdateClue = useCallback(
     (word: string, clue: string) => {
       setWords(words.map((w) => (w.word === word ? { ...w, clue } : w)));
     },
-    [words]
+    [words, setWords]
   );
 
   const handleBack = useCallback(() => {
@@ -273,7 +253,7 @@ export default function CreatePage() {
       fillWords: fillWordList,
     };
 
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [selectedFreeform, freeformResults, words, router]);
 

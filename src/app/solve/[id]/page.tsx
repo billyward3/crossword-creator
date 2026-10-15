@@ -5,6 +5,7 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Puzzle } from "@/lib/puzzle/types";
 import { useClientValue } from "@/lib/use-client-value";
+import { writeStored } from "@/lib/stored-state";
 import { isMyPuzzle } from "@/lib/puzzle/my-puzzles";
 
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
@@ -180,7 +181,7 @@ export default function SolvePage({
       fillWords: puzzle.fillWords ?? [],
       title: puzzle.title ?? "",
     };
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [puzzle, router]);
 

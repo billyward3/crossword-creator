@@ -25,9 +25,11 @@ import { InteractiveGrid } from "./components/InteractiveGrid";
 import { SlotPanel } from "./components/SlotPanel";
 import { WordListSidebar } from "../components/WordListSidebar";
 import { EditorReturnLink } from "@/components/EditorReturnLink";
+import { useStoredState, writeStored } from "@/lib/stored-state";
 
 const STORAGE_KEY_WORDS = "crossword-creator-words";
 const STORAGE_KEY_EDITOR = "crossword-editor-state";
+const NO_WORDS: WordEntry[] = [];
 
 const GRID_SIZES = [
   { label: "5\u00d75", rows: 5, cols: 5 },
@@ -40,7 +42,8 @@ type Tool = "select" | "black";
 export default function GuidedBuilderPage() {
   const [gridSize, setGridSize] = useState({ rows: 5, cols: 5 });
   const [grid, setGrid] = useState<GridModel>(() => createGrid(5, 5));
-  const [userWords, setUserWords] = useState<WordEntry[]>([]);
+  // Shared with /create, so edits here show up there too.
+  const [userWords, setUserWords] = useStoredState(STORAGE_KEY_WORDS, NO_WORDS);
   const [dictLoaded, setDictLoaded] = useState(false);
   const [dictEntries, setDictEntries] = useState<WordEntry[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotDescriptor | null>(null);
@@ -51,26 +54,7 @@ export default function GuidedBuilderPage() {
   const [history, setHistory] = useState<GridModel[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
   const router = useRouter();
-
-  // Load user words from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_WORDS);
-      if (stored) setUserWords(JSON.parse(stored));
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  // Persist user words back to localStorage so edits sync to /create
-  useEffect(() => {
-    if (hydrated) {
-      try {
-        localStorage.setItem(STORAGE_KEY_WORDS, JSON.stringify(userWords));
-      } catch {}
-    }
-  }, [userWords, hydrated]);
 
   // Load dictionary
   useEffect(() => {
@@ -550,7 +534,7 @@ export default function GuidedBuilderPage() {
       fillWords: fillWordList,
       title: "",
     };
-    localStorage.setItem(STORAGE_KEY_EDITOR, JSON.stringify(editorState));
+    writeStored(STORAGE_KEY_EDITOR, editorState);
     router.push("/create/edit");
   }, [grid, slots, userWords, router]);
 
